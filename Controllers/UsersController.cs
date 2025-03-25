@@ -227,6 +227,7 @@ namespace DRES.Controllers
 
 
 
+
                 // Update fields
                 existingUser.username = request.Username;
                 existingUser.phone = request.Phone;
