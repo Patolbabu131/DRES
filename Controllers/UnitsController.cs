@@ -1,16 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using DRES.Data;
+﻿using DRES.Data;
 using DRES.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
+using System.Net;
 
 namespace DRES.Controllers
 {
+    [Authorize]
     [Route("api/[controller]")]
     [ApiController]
     public class UnitsController : ControllerBase
@@ -22,136 +21,190 @@ namespace DRES.Controllers
             _context = context;
         }
 
-        // GET: api/Units
-        [HttpGet("GetAllUnitTypes")]
-        public async Task<IActionResult> GetAllUnitTypes()
+        // DTOs
+        public class CreateUnitRequest
         {
-            var units = await _context.Units
-                .OrderBy(u => u.unitname)
-                .Select(u => new UnitDto
-                {
-                    Id = u.Id,
-                    UnitName = u.unitname,
-                    UnitSymbol = u.unitsymbol
-                })
-                .ToListAsync();
+            [Required]
+            public string unitname { get; set; }
 
-            if (!units.Any())
-            {
-                return NotFound(new
-                {
-                    Status = StatusCodes.Status404NotFound,
-                    Message = "No unit types found"
-                });
-            }
-
-            return Ok(units);
+            [Required]
+            public string unitsymbol { get; set; }
         }
 
-       
-        [HttpGet("GetUnitTypeById/{id}")]
-        public async Task<IActionResult> GetUnitTypeById(int id)
+        public class UpdateUnitRequest
         {
-            var unit = await _context.Units
-                .Where(u => u.Id == id)
-                .Select(u => new UnitDto
-                {
-                    Id = u.Id,
-                    UnitName = u.unitname,
-                    UnitSymbol = u.unitsymbol
-                })
-                .FirstOrDefaultAsync();
-
-            if (unit == null)
-            {
-                return NotFound(new
-                {
-                    Status = StatusCodes.Status404NotFound,
-                    Message = $"Unit type with ID {id} not found"
-                });
-            }
-
-            return Ok(unit);
-        }
-        public class UnitDto
-        {
+            [Required]
             public int Id { get; set; }
 
             [Required]
-            [StringLength(50)]
-            public string UnitName { get; set; }
+            public string unitname { get; set; }
 
             [Required]
-            [StringLength(10)]
-            public string UnitSymbol { get; set; }
+            public string unitsymbol { get; set; }
         }
-        // PUT: api/Units/5
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-        [HttpPut("{id}")]
-        public async Task<IActionResult> PutUnit(int id, Unit unit)
+
+        public class UnitResponse
         {
-            if (id != unit.Id)
-            {
-                return BadRequest();
-            }
+            public int Id { get; set; }
+            public string unitname { get; set; }
+            public string unitsymbol { get; set; }
+        }
 
-            _context.Entry(unit).State = EntityState.Modified;
-
+        // POST: api/Units/CreateUnit
+        [HttpPost("CreateUnit")]
+        public async Task<IActionResult> CreateUnit([FromBody] CreateUnitRequest request)
+        {
             try
             {
+                if (!ModelState.IsValid)
+                    return BadRequest(new { message = "Invalid request data" });
+
+                // Check for duplicate unique fields
+                if (await _context.Units.AnyAsync(u => u.unitname == request.unitname))
+                    return Conflict(new { message = "Unit name already exists. Please use a different name." });
+
+                if (await _context.Units.AnyAsync(u => u.unitsymbol == request.unitsymbol))
+                    return Conflict(new { message = "Unit symbol already exists. Please use a different symbol." });
+
+                var newUnit = new Unit
+                {
+                    unitname = request.unitname,
+                    unitsymbol = request.unitsymbol
+                };
+
+                _context.Units.Add(newUnit);
                 await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Unit created successfully", data = MapToResponse(newUnit) });
             }
-            catch (DbUpdateConcurrencyException)
+            catch (Exception ex)
             {
-                if (!UnitExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
+                return StatusCode((int)HttpStatusCode.InternalServerError,
+                    new { message = $"Error creating unit: {ex.Message}" });
             }
-
-            return NoContent();
         }
 
-        // POST: api/Units
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
-        [HttpPost]
-        public async Task<ActionResult<Unit>> PostUnit(Unit unit)
+        // GET: api/Units/GetAllUnits
+        [HttpGet("GetAllUnits")]
+        public async Task<IActionResult> GetAllUnits()
         {
-            _context.Units.Add(unit);
-            await _context.SaveChangesAsync();
+            try
+            {
+                var units = await _context.Units
+                    .Select(u => MapToResponse(u))
+                    .ToListAsync();
 
-            return CreatedAtAction("GetUnit", new { id = unit.Id }, unit);
+                return Ok(new { data = units });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError,
+                    new { message = $"Error retrieving units: {ex.Message}" });
+            }
         }
 
-        // DELETE: api/Units/5
-        [HttpDelete("{id}")]
+        // GET: api/Units/GetUnitById/{id}
+        [HttpGet("GetUnitById/{id}")]
+        public async Task<IActionResult> GetUnitById(int id)
+        {
+            try
+            {
+                var unit = await _context.Units.FindAsync(id);
+                if (unit == null)
+                    return NotFound(new { message = "Unit not found" });
+
+                return Ok(new { data = MapToResponse(unit) });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError,
+                    new { message = $"Error retrieving unit: {ex.Message}" });
+            }
+        }
+
+        // PUT: api/Units/UpdateUnit/{id}
+        [HttpPut("UpdateUnit/{id}")]
+        public async Task<IActionResult> UpdateUnit(int id, [FromBody] UpdateUnitRequest request)
+        {
+            try
+            {
+                if (!ModelState.IsValid || id != request.Id)
+                    return BadRequest(new { message = "Invalid request data" });
+
+                var existingUnit = await _context.Units.FindAsync(id);
+                if (existingUnit == null)
+                    return NotFound(new { message = "Unit not found" });
+
+                // Check for duplicate unit name (excluding current unit)
+                if (await _context.Units.AnyAsync(u => u.Id != id && u.unitname == request.unitname))
+                    return Conflict(new { message = "Unit name already exists. Please use a different name." });
+
+                // Check for duplicate unit symbol (excluding current unit)
+                if (await _context.Units.AnyAsync(u => u.Id != id && u.unitsymbol == request.unitsymbol))
+                    return Conflict(new { message = "Unit symbol already exists. Please use a different symbol." });
+
+                existingUnit.unitname = request.unitname;
+                existingUnit.unitsymbol = request.unitsymbol;
+
+                _context.Entry(existingUnit).State = EntityState.Modified;
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Unit updated successfully", data = MapToResponse(existingUnit) });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError,
+                    new { message = $"Error updating unit: {ex.Message}" });
+            }
+        }
+
+        // DELETE: api/Units/DeleteUnit/{id}
+        [HttpDelete("DeleteUnit/{id}")]
         public async Task<IActionResult> DeleteUnit(int id)
         {
-            var unit = await _context.Units.FindAsync(id);
-            if (unit == null)
+            try
             {
-                return NotFound();
+                var unit = await _context.Units.FindAsync(id);
+                if (unit == null)
+                    return NotFound(new { message = "Unit not found" });
+
+                _context.Units.Remove(unit);
+
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (DbUpdateException dbEx)
+                {
+                    // Check if the exception is due to a foreign key constraint violation
+                    if (dbEx.InnerException is SqlException sqlEx && sqlEx.Number == 547)
+                    {
+                        return BadRequest(new { message = "This unit is currently in use and cannot be deleted." });
+                    }
+                    return StatusCode((int)HttpStatusCode.InternalServerError,
+                        new { message = $"Error deleting unit: {dbEx.Message}" });
+                }
+                catch (Exception ex)
+                {
+                    return StatusCode((int)HttpStatusCode.InternalServerError,
+                        new { message = $"Error deleting unit: {ex.Message}" });
+                }
+
+                return Ok(new { message = "Unit deleted successfully" });
             }
-
-            _context.Units.Remove(unit);
-            await _context.SaveChangesAsync();
-
-            return NoContent();
+            catch (Exception ex)
+            {
+                return StatusCode((int)HttpStatusCode.InternalServerError,
+                    new { message = $"Error processing delete request: {ex.Message}" });
+            }
         }
 
-        private bool UnitExists(int id)
-        {
-            return _context.Units.Any(e => e.Id == id);
-        }
-
-
-        
+        private static UnitResponse MapToResponse(Unit unit) =>
+            new UnitResponse
+            {
+                Id = unit.Id,
+                unitname = unit.unitname,
+                unitsymbol = unit.unitsymbol
+            };
     }
-
-
 }
-

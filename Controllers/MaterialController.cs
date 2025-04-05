@@ -1,197 +1,154 @@
 ﻿using DRES.Data;
 using DRES.Models;
-using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 
 namespace DRES.Controllers
 {
-    [Route("api/[controller]")]
+    [Authorize]
     [ApiController]
-    public class MaterialController : ControllerBase
+    [Route("api/[controller]")]
+    public class MaterialsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
 
-        public MaterialController(ApplicationDbContext context)
+        public MaterialsController(ApplicationDbContext context)
         {
             _context = context;
         }
 
-        [HttpGet("GetAllMaterials")]
-        public async Task<ActionResult<IEnumerable<MaterialDto>>> GetAllMaterials()
+        // DTO for creating Material
+        public class CreateMaterialRequest
         {
-            return await _context.Materials
-                .Include(m => m.Unit)  // Fixed the casing from 'unit' to 'Unit'
-                .Select(m => new MaterialDto
-                {
-                    Id = m.id,
-                    MaterialName = m.material_name,
-                    UnitId = m.unit_id,
-                    UnitName = m.Unit.unitname,
-                    UnitSymbol = m.Unit.unitsymbol,
-                    Remark = m.remark
-                })
-                .ToListAsync();
+            [Required]
+            public string material_name { get; set; }
+
+            public string remark { get; set; }
         }
 
-        [HttpGet("{id}")]
-        public async Task<ActionResult<MaterialDetailDto>> GetMaterial(int id)
+        // Response DTO for Material
+        public class MaterialResponse
         {
-            var material = await _context.Materials
-                .Include(m => m.Unit)
-                .FirstOrDefaultAsync(m => m.id == id);
+            public int id { get; set; }
+            public string material_name { get; set; }
+            public string remark { get; set; }
+        }
 
-            if (material == null)
+        // Mapping function to convert Material entity to MaterialResponse DTO.
+        private static MaterialResponse MapToResponse(Material material) =>
+            new MaterialResponse
             {
-                return NotFound();
-            }
-
-            return new MaterialDetailDto
-            {
-                Id = material.id,
-                MaterialName = material.material_name,
-                UnitId = material.unit_id,
-                Remark = material.remark,
-                Unit = new UnitDto
-                {
-                    Id = material.Unit.Id,
-                    UnitName = material.Unit.unitname,
-                    UnitSymbol = material.Unit.unitsymbol
-                }
+                id = material.id,
+                material_name = material.material_name,
+                remark = material.remark
             };
-        }
-        // Add to MaterialController class
+
+        // Create Material
         [HttpPost("CreateMaterial")]
-        public async Task<ActionResult<MaterialDetailDto>> CreateMaterial(CreateMaterialDto dto)
+        public async Task<IActionResult> Create([FromBody] CreateMaterialRequest request)
         {
-            // Validate request
             if (!ModelState.IsValid)
-            {
                 return BadRequest(ModelState);
-            }
 
-            // Check if unit exists
-            var unitExists = await _context.Units.AnyAsync(u => u.Id == dto.UnitId);
-            if (!unitExists)
-            {
-                return BadRequest("Invalid Unit ID");
-            }
+            // Check if a material with the same name already exists (case-insensitive)
+            var existingMaterial = await _context.Materials
+                .FirstOrDefaultAsync(m => m.material_name.ToLower() == request.material_name.ToLower());
 
-            // Create new material
-            var material = new Material
+            if (existingMaterial != null)
             {
-                material_name = dto.MaterialName,
-                unit_id = dto.UnitId,
-                remark = dto.Remark
-            };
+                return BadRequest(new { message = "Duplicate Material Name" });
+            }
 
             try
             {
+                var material = new Material
+                {
+                    material_name = request.material_name,
+                    remark = request.remark
+                };
+
                 _context.Materials.Add(material);
                 await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Success", data = MapToResponse(material) });
             }
-            catch (DbUpdateException ex)
+            catch (Exception ex)
             {
-                // Handle duplicate material name
-                if (ex.InnerException is SqlException sqlEx &&
-                    (sqlEx.Number == 2601 || sqlEx.Number == 2627))
-                {
-                    return Conflict("Material name already exists");
-                }
-                return StatusCode(500, "An error occurred while saving");
+                return StatusCode(500, new { message = $"Error: {ex.Message}" });
             }
-
-            // Return created material with full details
-            var newMaterial = await _context.Materials
-                .Include(m => m.Unit)
-                .FirstOrDefaultAsync(m => m.id == material.id);
-
-            return CreatedAtAction(nameof(GetMaterial), new { id = material.id },
-                new MaterialDetailDto
-                {
-                    Id = newMaterial.id,
-                    MaterialName = newMaterial.material_name,
-                    UnitId = newMaterial.unit_id,
-                    Remark = newMaterial.remark,
-                    Unit = new UnitDto
-                    {
-                        Id = newMaterial.Unit.Id,
-                        UnitName = newMaterial.Unit.unitname,
-                        UnitSymbol = newMaterial.Unit.unitsymbol
-                    }
-                });
         }
-        [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteMaterial(int id)
+
+        // Get All Materials
+        [HttpGet("GetAllMaterials")]
+        public async Task<IActionResult> GetAll()
         {
-            var material = await _context.Materials
-                .Include(m => m.Stocks)
-                .Include(m => m.Transactions)
-                .FirstOrDefaultAsync(m => m.id == id);
-
-            if (material == null)
-            {
-                return NotFound();
-            }
-
-            // Remove related stocks
-            _context.Stocks.RemoveRange(material.Stocks);
-
-            // Remove related transactions
-            _context.Transactions.RemoveRange(material.Transactions);
-
-            // Remove the material
-            _context.Materials.Remove(material);
-
             try
             {
-                await _context.SaveChangesAsync();
+                var materials = await _context.Materials.ToListAsync();
+                var response = materials.Select(m => MapToResponse(m));
+                return Ok(new { message = "Success", data = response });
             }
-            catch (DbUpdateException ex)
+            catch (Exception ex)
             {
-                return StatusCode(500, "An error occurred while deleting the material");
+                return StatusCode(500, new { message = $"Error retrieving materials: {ex.Message}" });
             }
-
-            return NoContent();
         }
 
-        // Add to DTO classes section
-        public class CreateMaterialDto
+        // Get Material by Id
+        [HttpGet("GetMaterialById/{id}")]
+        public async Task<IActionResult> GetById(int id)
         {
-            [Required]
-            [StringLength(100)]
-            public string MaterialName { get; set; }
+            try
+            {
+                var material = await _context.Materials.FindAsync(id);
+                if (material == null)
+                {
+                    return NotFound(new { message = "Material not found" });
+                }
 
-            [Required]
-            public int UnitId { get; set; }
-
-            [StringLength(500)]
-            public string Remark { get; set; }
+                return Ok(new { message = "Success", data = MapToResponse(material) });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error retrieving material: {ex.Message}" });
+            }
         }
-    }
 
+        // Delete Material
+        [HttpDelete("DeleteMaterial/{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            try
+            {
+                var material = await _context.Materials.FindAsync(id);
+                if (material == null)
+                {
+                    return NotFound(new { message = "Material not found" });
+                }
 
-    public class MaterialDto
-    {
-        public int Id { get; set; }
-        public string MaterialName { get; set; }
-        public int UnitId { get; set; }
-        public string UnitName { get; set; }
-        public string UnitSymbol { get; set; }
-        public string Remark { get; set; }
-    }
+                _context.Materials.Remove(material);
 
-    public class MaterialDetailDto : MaterialDto
-    {
-        public UnitDto Unit { get; set; }
-    }
+                try
+                {
+                    await _context.SaveChangesAsync();
+                }
+                catch (DbUpdateException)
+                {
+                    return Conflict(new { message = "Unable to delete material due to existing related transactions." });
+                }
+                catch (Exception ex)
+                {
+                    return StatusCode(500, new { message = $"Error: {ex.Message}" });
+                }
 
-    public class UnitDto
-    {
-        public int Id { get; set; }
-        public string UnitName { get; set; }
-        public string UnitSymbol { get; set; }
+                return Ok(new { message = "Success" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error processing delete request: {ex.Message}" });
+            }
+        }
     }
 }

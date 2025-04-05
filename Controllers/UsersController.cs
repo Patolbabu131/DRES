@@ -161,7 +161,11 @@ namespace DRES.Controllers
                     return BadRequest(new { message = "Invalid Site ID" });
 
                 // Generate password hash
-                var password = $"{request.Username}@{request.Phone}";
+
+                string usernameNoSpaces = request.Username.Replace(" ", "");
+                string firstFourUsername = usernameNoSpaces.Length >= 4 ? usernameNoSpaces.Substring(0, 4) : usernameNoSpaces;
+                string lastFourPhone = request.Phone.Length >= 4 ? request.Phone.Substring(request.Phone.Length - 4) : request.Phone;
+                var password = $"{firstFourUsername}@{lastFourPhone}";
 
                 var newUser = new User
                 {
@@ -179,7 +183,7 @@ namespace DRES.Controllers
 
                 _context.Users.Add(newUser);
                 await _context.SaveChangesAsync();
-
+                await _context.Entry(newUser).Reference(u => u.Site).LoadAsync();
                 return Ok(new
                 {
                     message = "User created successfully",
@@ -341,18 +345,6 @@ namespace DRES.Controllers
 
 
     }
-    public class ApiResponse
-    {
-        public int Status { get; set; }
-        public string Message { get; set; }
-        public object Data { get; set; }
-
-        public ApiResponse(int status, string message, object data = null)
-        {
-            Status = status;
-            Message = message;
-            Data = data;
-        }
-    }
+  
 }
 

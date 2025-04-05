@@ -12,7 +12,7 @@ namespace DRES.Models
 
         public int site_id { get; set; }  // Null = Admin warehouse
 
-        public int unit_type_id { get; set; }  // Null = Admin warehouse
+        public int unit_type_id { get; set; } 
 
         public int user_id { get; set; }  // Null = Site-level stock
 

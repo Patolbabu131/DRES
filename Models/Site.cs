@@ -30,7 +30,8 @@ namespace DRES.Models
             public virtual ICollection<Stock> Stocks { get; set; } = new List<Stock>();
 
             public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();
-
+            public virtual ICollection<Material_Request> Material_Request { get; set; } = new List<Material_Request>();
+            public virtual ICollection<Material_Consumption> Material_Consumption { get; set; } = new List<Material_Consumption>();
 
     }
     

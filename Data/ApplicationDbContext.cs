@@ -17,7 +17,13 @@ namespace DRES.Data
         public DbSet<Material> Materials { get; set; }
         public DbSet<Transaction> Transactions { get; set; }
         public DbSet<Stock> Stocks { get; set; }
+        public DbSet<Material_Request> Material_Requests { get; set; }
+        public DbSet<Material_Request_Item> Material_Request_Item { get; set; }
+        public DbSet<Transaction_Items> Transaction_Items { get; set; }
         public DbSet<UserActivityLog> UserActivityLogs { get; set; }
+   
+        public DbSet<Material_Consumption> UserAMaterial_ConsumptionctivityLogs { get; set; }
+        public DbSet<Material_Consumption_Item> Material_Consumption_Item { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<Material>()
@@ -32,11 +38,54 @@ namespace DRES.Data
                       .OnDelete(DeleteBehavior.Restrict);
             });
 
-            modelBuilder.Entity<Material>()
-               .HasOne(m => m.Unit)
-               .WithMany(u => u.Materials)
-               .HasForeignKey(m => m.unit_id)
-               .OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<Material_Consumption_Item>()
+              .HasOne(m => m.Unit)
+              .WithMany(u => u.Material_Consumption_Item)
+              .HasForeignKey(m => m.unit_id)
+              .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Material_Consumption_Item>()
+              .HasOne(m => m.Material)
+              .WithMany(u => u.Material_Consumption_Item)
+              .HasForeignKey(m => m.material_id)
+              .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Material_Consumption>()
+              .HasMany(mc => mc.Material_Consumption_Item)
+              .WithOne(item => item.Material_Consumption)
+              .HasForeignKey(item => item.consumption_id)
+              .OnDelete(DeleteBehavior.Cascade);
+
+
+            modelBuilder.Entity<Material_Request>()
+            .HasMany(mr => mr.Material_Request_Item)
+            .WithOne(i => i.material_request)
+            .HasForeignKey(i => i.request_id)
+            .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Material_Request>()
+            .HasOne(m => m.Site)
+            .WithMany(u => u.Material_Request)
+            .HasForeignKey(m => m.site_id)
+            .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Material_Consumption>()
+            .HasOne(m => m.Site)
+            .WithMany(u => u.Material_Consumption)
+            .HasForeignKey(m => m.site_id)
+            .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Material_Request_Item>()
+              .HasOne(m => m.Material)
+              .WithMany(u => u.Material_Request_Item)
+              .HasForeignKey(m => m.material_id)
+              .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Material_Request_Item>()
+            .HasOne(m => m.Unit)
+            .WithMany(u => u.Material_Request_Item)
+            .HasForeignKey(m => m.unit_id)
+            .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<Stock>()
               .HasOne(m => m.Material)
@@ -62,17 +111,23 @@ namespace DRES.Data
            .HasForeignKey(m => m.user_id)
            .OnDelete(DeleteBehavior.Restrict);
 
-            modelBuilder.Entity<Transaction>()
+            modelBuilder.Entity<Transaction_Items>()
            .HasOne(m => m.Material)
-           .WithMany(u => u.Transactions)
+           .WithMany(u => u.Transaction_Items)
            .HasForeignKey(m => m.material_id)
            .OnDelete(DeleteBehavior.Restrict);
 
-            modelBuilder.Entity<Transaction>()
+            modelBuilder.Entity<Transaction_Items>()
             .HasOne(m => m.Unit)
-            .WithMany(u => u.Transactions)
+            .WithMany(u => u.Transaction_Items)
             .HasForeignKey(m => m.unit_type_id)
             .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Transaction>()
+              .HasMany(t => t.TransactionItems)
+              .WithOne(ti => ti.Transaction)
+              .HasForeignKey(ti => ti.transaction_id)
+              .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Transaction>()
             .HasOne(m => m.Supplier)
@@ -80,11 +135,7 @@ namespace DRES.Data
             .HasForeignKey(m => m.form_supplier_id)
             .OnDelete(DeleteBehavior.Restrict);
 
-              modelBuilder.Entity<Transaction>()
-            .HasOne(m => m.user)
-            .WithMany(u => u.Transactions)
-            .HasForeignKey(m => m.from_userid)
-            .OnDelete(DeleteBehavior.Restrict);
+            
 
             modelBuilder.Entity<Transaction>()
             .HasOne(m => m.Site)

@@ -4,6 +4,7 @@ using DRES.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DRES.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250405131927_transaction-itmes")]
+    partial class transactionitmes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -44,144 +47,6 @@ namespace DRES.Migrations
                         .IsUnique();
 
                     b.ToTable("Materials");
-                });
-
-            modelBuilder.Entity("DRES.Models.Material_Consumption", b =>
-                {
-                    b.Property<int>("id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("id"));
-
-                    b.Property<int?>("confirmed_by")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("createdon")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("date")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("remark")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("site_id")
-                        .HasColumnType("int");
-
-                    b.Property<int>("user_id")
-                        .HasColumnType("int");
-
-                    b.HasKey("id");
-
-                    b.HasIndex("site_id");
-
-                    b.ToTable("UserAMaterial_ConsumptionctivityLogs");
-                });
-
-            modelBuilder.Entity("DRES.Models.Material_Consumption_Item", b =>
-                {
-                    b.Property<int>("id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("id"));
-
-                    b.Property<int>("consumption_id")
-                        .HasColumnType("int");
-
-                    b.Property<int>("material_id")
-                        .HasColumnType("int");
-
-                    b.Property<int>("quantity")
-                        .HasColumnType("int");
-
-                    b.Property<int>("unit_id")
-                        .HasColumnType("int");
-
-                    b.HasKey("id");
-
-                    b.HasIndex("consumption_id");
-
-                    b.HasIndex("material_id");
-
-                    b.HasIndex("unit_id");
-
-                    b.ToTable("Material_Consumption_Item");
-                });
-
-            modelBuilder.Entity("DRES.Models.Material_Request", b =>
-                {
-                    b.Property<int>("id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("id"));
-
-                    b.Property<DateTime?>("approval_date")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("approved_by")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("forwarded_to_ho")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("remark")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime>("request_date")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("requested_by")
-                        .HasColumnType("int");
-
-                    b.Property<int>("site_id")
-                        .HasColumnType("int");
-
-                    b.HasKey("id");
-
-                    b.HasIndex("site_id");
-
-                    b.ToTable("Material_Requests");
-                });
-
-            modelBuilder.Entity("DRES.Models.Material_Request_Item", b =>
-                {
-                    b.Property<int>("id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("id"));
-
-                    b.Property<int?>("issued_quantity")
-                        .HasColumnType("int");
-
-                    b.Property<int>("material_id")
-                        .HasColumnType("int");
-
-                    b.Property<int>("quantity")
-                        .HasColumnType("int");
-
-                    b.Property<int>("request_id")
-                        .HasColumnType("int");
-
-                    b.Property<string>("status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("unit_id")
-                        .HasColumnType("int");
-
-                    b.HasKey("id");
-
-                    b.HasIndex("material_id");
-
-                    b.HasIndex("request_id");
-
-                    b.HasIndex("unit_id");
-
-                    b.ToTable("Material_Request_Item");
                 });
 
             modelBuilder.Entity("DRES.Models.Site", b =>
@@ -541,82 +406,6 @@ namespace DRES.Migrations
                     b.ToTable("UserActivityLogs");
                 });
 
-            modelBuilder.Entity("DRES.Models.Material_Consumption", b =>
-                {
-                    b.HasOne("DRES.Models.Site", "Site")
-                        .WithMany("Material_Consumption")
-                        .HasForeignKey("site_id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Site");
-                });
-
-            modelBuilder.Entity("DRES.Models.Material_Consumption_Item", b =>
-                {
-                    b.HasOne("DRES.Models.Material_Consumption", "Material_Consumption")
-                        .WithMany("Material_Consumption_Item")
-                        .HasForeignKey("consumption_id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("DRES.Models.Material", "Material")
-                        .WithMany("Material_Consumption_Item")
-                        .HasForeignKey("material_id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("DRES.Models.Unit", "Unit")
-                        .WithMany("Material_Consumption_Item")
-                        .HasForeignKey("unit_id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Material");
-
-                    b.Navigation("Material_Consumption");
-
-                    b.Navigation("Unit");
-                });
-
-            modelBuilder.Entity("DRES.Models.Material_Request", b =>
-                {
-                    b.HasOne("DRES.Models.Site", "Site")
-                        .WithMany("Material_Request")
-                        .HasForeignKey("site_id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Site");
-                });
-
-            modelBuilder.Entity("DRES.Models.Material_Request_Item", b =>
-                {
-                    b.HasOne("DRES.Models.Material", "Material")
-                        .WithMany("Material_Request_Item")
-                        .HasForeignKey("material_id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.HasOne("DRES.Models.Material_Request", "material_request")
-                        .WithMany("Material_Request_Item")
-                        .HasForeignKey("request_id")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("DRES.Models.Unit", "Unit")
-                        .WithMany("Material_Request_Item")
-                        .HasForeignKey("unit_id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Material");
-
-                    b.Navigation("Unit");
-
-                    b.Navigation("material_request");
-                });
-
             modelBuilder.Entity("DRES.Models.Stock", b =>
                 {
                     b.HasOne("DRES.Models.Material", "Material")
@@ -715,31 +504,13 @@ namespace DRES.Migrations
 
             modelBuilder.Entity("DRES.Models.Material", b =>
                 {
-                    b.Navigation("Material_Consumption_Item");
-
-                    b.Navigation("Material_Request_Item");
-
                     b.Navigation("Stocks");
 
                     b.Navigation("Transaction_Items");
                 });
 
-            modelBuilder.Entity("DRES.Models.Material_Consumption", b =>
-                {
-                    b.Navigation("Material_Consumption_Item");
-                });
-
-            modelBuilder.Entity("DRES.Models.Material_Request", b =>
-                {
-                    b.Navigation("Material_Request_Item");
-                });
-
             modelBuilder.Entity("DRES.Models.Site", b =>
                 {
-                    b.Navigation("Material_Consumption");
-
-                    b.Navigation("Material_Request");
-
                     b.Navigation("Stocks");
 
                     b.Navigation("Transactions");
@@ -759,10 +530,6 @@ namespace DRES.Migrations
 
             modelBuilder.Entity("DRES.Models.Unit", b =>
                 {
-                    b.Navigation("Material_Consumption_Item");
-
-                    b.Navigation("Material_Request_Item");
-
                     b.Navigation("Stocks");
 
                     b.Navigation("Transaction_Items");
