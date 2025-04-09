@@ -9,7 +9,7 @@ using System.Net;
 
 namespace DRES.Controllers
 {
-    [Authorize]
+
     [Route("api/[controller]")]
     [ApiController]
     public class SitesController : ControllerBase
@@ -97,7 +97,9 @@ namespace DRES.Controllers
             {
                 var sites = await _context.Sites
                     .Where(s => s.id != 1) // Exclude site with id = 1
-                    .Select(s => MapToResponse(s))
+                    .OrderByDescending(r => r.id).Select(s => MapToResponse(s))
+
+
                     .ToListAsync();
 
                 return Ok(new { data = sites });

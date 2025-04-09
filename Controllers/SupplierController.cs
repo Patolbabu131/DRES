@@ -9,7 +9,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DRES.Controllers
 {
-    [Authorize]
+
     [ApiController]
     [Route("api/[controller]")]
     public class SuppliersController : ControllerBase
@@ -108,7 +108,7 @@ namespace DRES.Controllers
         [HttpGet("GetAllSuppliers")]
         public async Task<IActionResult> GetAll()
         {
-            var suppliers = await _context.Suppliers.ToListAsync();
+            var suppliers = await _context.Suppliers.OrderByDescending(r => r.id).ToListAsync();
             return Ok(new { message = "Success", data = suppliers });
         }
 

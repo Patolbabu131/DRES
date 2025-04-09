@@ -6,10 +6,10 @@ namespace DRES.Models
     public class Transaction
     {
         public int id { get; set; }
-        public string invoice_number { get; set;}
+        public string? invoice_number { get; set;}
         public string transaction_type { get; set; } // purchase, transfer, issue, return, received, damage, loss, scrap, other     
         public DateTime transaction_date { get; set; } // user select
-        public int site_id { get; set; } // site id where transaction is done
+        public int? site_id { get; set; } // site id where transaction is done
 
 
         public int? request_id { get; set; }

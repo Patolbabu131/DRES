@@ -9,7 +9,7 @@ using System.Net;
 
 namespace DRES.Controllers
 {
-    [Authorize]
+
     [Route("api/[controller]")]
     [ApiController]
     public class UnitsController : ControllerBase
@@ -91,6 +91,7 @@ namespace DRES.Controllers
             try
             {
                 var units = await _context.Units
+                     .OrderByDescending(r => r.Id)
                     .Select(u => MapToResponse(u))
                     .ToListAsync();
 

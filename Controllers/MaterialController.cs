@@ -7,7 +7,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace DRES.Controllers
 {
-    [Authorize]
+   
     [ApiController]
     [Route("api/[controller]")]
     public class MaterialsController : ControllerBase
@@ -87,7 +87,7 @@ namespace DRES.Controllers
             try
             {
                 var materials = await _context.Materials.ToListAsync();
-                var response = materials.Select(m => MapToResponse(m));
+                var response = materials.OrderByDescending(r => r.id).Select(m => MapToResponse(m));
                 return Ok(new { message = "Success", data = response });
             }
             catch (Exception ex)

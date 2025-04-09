@@ -35,6 +35,7 @@ namespace DRES.Controllers
             {
                 var users = await _context.Users
                     .Where(u => !(u.id == 3 || u.role == userrole.admin))
+                     .OrderByDescending(r => r.id)
                     .Select(u => new UserResponse
                     {
                         Id = u.id,
