@@ -4,6 +4,7 @@ using DRES.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DRES.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250409183141_stockuser")]
+    partial class stockuser
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -335,9 +338,6 @@ namespace DRES.Migrations
                     b.Property<int?>("from_site_id")
                         .HasColumnType("int");
 
-                    b.Property<decimal?>("grand_total")
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<string>("invoice_number")
                         .HasColumnType("nvarchar(max)");
 
@@ -408,9 +408,6 @@ namespace DRES.Migrations
 
                     b.Property<string>("tex_type")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal?>("texable")
-                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal?>("total")
                         .HasColumnType("decimal(18,2)");

@@ -14,10 +14,11 @@ namespace DRES.Models
 
         public int unit_type_id { get; set; } 
 
-        public int user_id { get; set; }  // Null = Site-level stock
+        public int? user_id { get; set; }  // Null = Site-level stock
 
         public int quantity { get; set; }
 
+        public int last_transaction_id { get; set; }
         public DateTime CreatedAt { get; set; }
 
         public DateTime UpdatedAt { get; set; }

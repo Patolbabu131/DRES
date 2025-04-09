@@ -75,7 +75,7 @@ namespace DRES.Controllers
             public decimal total { get; set; }
         }
 
-        // DTO for transaction response
+       
         public class TransactionResponseDTO
         {
             public int id { get; set; }
@@ -87,6 +87,7 @@ namespace DRES.Controllers
             public string to_site { get; set; }
             public string created_by { get; set; }
             public string? remark { get; set; }
+            public decimal? grand_total { get; set; } // Added
             public List<TransactionItemResponseDTO> items { get; set; } = new();
         }
 
@@ -99,6 +100,7 @@ namespace DRES.Controllers
             public int quantity { get; set; }
             public decimal unit_price { get; set; }
             public int gst { get; set; }
+            public decimal? texable { get; set; } // Added
             public decimal total { get; set; }
         }
 
@@ -134,7 +136,6 @@ namespace DRES.Controllers
                         invoice_number = transactionDto.invoice_number,
                         transaction_date = transactionDto.transaction_date,
                         transaction_type = transactionDto.transaction_type,
-                  
                         request_id = transactionDto.request_id,
                         remark = transactionDto.remark,
                         form_supplier_id = transactionDto.form_supplier_id,
@@ -149,9 +150,13 @@ namespace DRES.Controllers
                     _context.Transactions.Add(newTransaction);
                     await _context.SaveChangesAsync();
 
-                    // Add transaction items
+                    // Variable to accumulate grand_total
+                    decimal grandTotal = 0;
+
+                    // Add transaction items and update stock
                     foreach (var itemDto in transactionDto.items)
                     {
+                        // Validate material and unit existence
                         var material = await _context.Materials.FindAsync(itemDto.material_id);
                         if (material == null)
                         {
@@ -164,6 +169,19 @@ namespace DRES.Controllers
                             throw new Exception($"Unit with ID {itemDto.unit_type_id} not found");
                         }
 
+                        // Calculate texable and validate total
+                        decimal texable = itemDto.quantity * itemDto.unit_price;
+                        decimal taxRate = (decimal)itemDto.gst / 100m;
+                        decimal expectedTotal = texable * (1 + taxRate);
+                        expectedTotal = Math.Round(expectedTotal, 2); // Round to 2 decimal places
+
+                        // Validate provided total matches calculation (with tolerance for floating-point precision)
+                        if (Math.Abs(expectedTotal - itemDto.total) > 0.01m)
+                        {
+                            throw new Exception($"Provided total ({itemDto.total}) does not match calculated total ({expectedTotal}) for material ID {itemDto.material_id}");
+                        }
+
+                        // Create the transaction item record
                         var transactionItem = new Transaction_Items
                         {
                             transaction_id = newTransaction.id,
@@ -172,11 +190,45 @@ namespace DRES.Controllers
                             quantity = itemDto.quantity,
                             unit_price = itemDto.unit_price,
                             gst = itemDto.gst,
-                            total = itemDto.total
+                            texable = texable, // Set calculated texable
+                            total = itemDto.total // Use provided total after validation
                         };
 
                         _context.Transaction_Items.Add(transactionItem);
+
+                        // Accumulate grand_total
+                        grandTotal += itemDto.total;
+
+                        // Update stock logic
+                        var existingStock = await _context.Stocks.FirstOrDefaultAsync(s =>
+                            s.site_id == transactionDto.to_site_id &&
+                            s.material_id == itemDto.material_id &&
+                            s.unit_type_id == itemDto.unit_type_id);
+
+                        if (existingStock == null)
+                        {
+                            var newStock = new Stock
+                            {
+                                material_id = itemDto.material_id,
+                                site_id = transactionDto.to_site_id,
+                                unit_type_id = itemDto.unit_type_id,
+                                last_transaction_id = newTransaction.id,
+                                quantity = itemDto.quantity,
+                                CreatedAt = DateTime.Now,
+                                UpdatedAt = DateTime.Now
+                            };
+                            _context.Stocks.Add(newStock);
+                        }
+                        else
+                        {
+                            existingStock.quantity += itemDto.quantity;
+                            existingStock.UpdatedAt = DateTime.Now;
+                            existingStock.last_transaction_id = newTransaction.id;
+                        }
                     }
+
+                    // Set grand_total for the transaction
+                    newTransaction.grand_total = grandTotal;
 
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
@@ -190,6 +242,7 @@ namespace DRES.Controllers
                 }
             }
         }
+
 
         // GET: api/Transaction/GetAll
         [HttpGet("GetAllTransactions")]
@@ -217,8 +270,8 @@ namespace DRES.Controllers
                     supplier_name = t.Supplier?.company_name,
                     from_site = t.Site?.sitename ?? "Supplier",
                     to_site = _context.Sites.FirstOrDefault(s => s.id == t.to_site_id)?.sitename ?? "Unknown",
-                    created_by = $"{t.user?.username} ({t.user?.role})",
                     remark = t.remark,
+                    grand_total = t.grand_total, // Added
                     items = t.TransactionItems.Select(i => new TransactionItemResponseDTO
                     {
                         id = i.id,
@@ -227,6 +280,7 @@ namespace DRES.Controllers
                         quantity = i.quantity,
                         unit_price = i.unit_price ?? 0,
                         gst = i.gst ?? 0,
+                        texable = i.texable, // Added
                         total = i.total ?? 0
                     }).ToList()
                 });

@@ -11,6 +11,7 @@
         public decimal? unit_price { get; set; }
         public string? tex_type { get; set; } // Intra , Inter , No gst (no,inter,intra)
         public int? gst { get; set; } // percentage of gst
+        public decimal? texable { get; set; }
         public decimal? total { get; set; }
 
         public virtual Transaction Transaction { get; set; }

@@ -26,6 +26,7 @@ namespace DRES.Models
         public int? received_by_user_id { get; set; }  
         public DateTime? recived_datetime { get; set; } // site manager recive 
 
+        public decimal? grand_total { get; set; }
 
         public int createdby { get; set; }           
         public DateTime createdat { get; set; }
