@@ -20,7 +20,7 @@ namespace DRES.Controllers
             _context = context;
         }
 
-        // DTO for creating transaction
+
         public class CreateTransactionDTO
         {
             [Required(ErrorMessage = "Invoice number is required")]
@@ -49,7 +49,7 @@ namespace DRES.Controllers
             public List<CreateTransactionItemDTO> items { get; set; } = new();
         }
 
-        // DTO for transaction items
+   
         public class CreateTransactionItemDTO
         {
             [Required(ErrorMessage = "Material ID is required")]
@@ -75,7 +75,7 @@ namespace DRES.Controllers
             public decimal total { get; set; }
         }
 
-       
+
         public class TransactionResponseDTO
         {
             public int id { get; set; }
@@ -91,7 +91,42 @@ namespace DRES.Controllers
             public List<TransactionItemResponseDTO> items { get; set; } = new();
         }
 
-        // DTO for transaction item response
+        public class CreateIssueTransactionDTO
+        {
+            
+            [Required(ErrorMessage = "Site ID is required")]
+            public int site_id { get; set; }
+            public int? request_id { get; set; }
+
+            public string? remark { get; set; }
+            [Required(ErrorMessage = "From site ID is required")]
+            public int from_site_id { get; set; }
+            [Required(ErrorMessage = "To user ID is required")]
+            public int to_user_id { get; set; }
+
+            // Created by field comes from request
+            [Required(ErrorMessage = "Created by user is required")]
+            public int createdby { get; set; }
+
+            // At least one transaction item is required
+            [Required(ErrorMessage = "At least one transaction item is required")]
+            public List<CreateIssueTransactionItemDTO> items { get; set; } = new();
+        }
+        public class CreateIssueTransactionItemDTO
+        {
+            [Required(ErrorMessage = "Material ID is required")]
+            public int material_id { get; set; }
+
+            [Required(ErrorMessage = "Unit type ID is required")]
+            public int unit_type_id { get; set; }
+
+            [Required(ErrorMessage = "Quantity is required")]
+            [Range(1, int.MaxValue, ErrorMessage = "Quantity must be at least 1")]
+            public int quantity { get; set; }
+        }
+
+
+
         public class TransactionItemResponseDTO
         {
             public int id { get; set; }
@@ -104,9 +139,8 @@ namespace DRES.Controllers
             public decimal total { get; set; }
         }
 
-        // POST: api/Transaction/Create
-        [HttpPost("CreateTransaction")]
-        public async Task<IActionResult> CreateTransaction([FromBody] CreateTransactionDTO transactionDto)
+        [HttpPost("CreateSiteTransaction")]
+        public async Task<IActionResult> CreateSiteTransaction([FromBody] CreateTransactionDTO transactionDto)
         {
             if (!ModelState.IsValid)
             {
@@ -124,6 +158,7 @@ namespace DRES.Controllers
                         return NotFound(new { message = "User not found" });
                     }
 
+
                     var toSite = await _context.Sites.FindAsync(transactionDto.to_site_id);
                     if (toSite == null)
                     {
@@ -138,11 +173,13 @@ namespace DRES.Controllers
                         transaction_type = transactionDto.transaction_type,
                         request_id = transactionDto.request_id,
                         remark = transactionDto.remark,
+                        site_id=transactionDto.to_site_id,
                         form_supplier_id = transactionDto.form_supplier_id,
                         to_site_id = transactionDto.to_site_id,
                         createdby = transactionDto.createdby,
                         createdat = DateTime.Now,
                         updatedby = transactionDto.createdby,
+                        
                         updatedat = DateTime.Now,
                         status = "completed" // Default status
                     };
@@ -154,7 +191,7 @@ namespace DRES.Controllers
                     decimal grandTotal = 0;
 
                     // Add transaction items and update stock
-                    foreach (var itemDto in transactionDto.items)
+                    foreach (var itemDto in transactionDto.items.OrderBy(i => i.material_id))
                     {
                         // Validate material and unit existence
                         var material = await _context.Materials.FindAsync(itemDto.material_id);
@@ -203,7 +240,8 @@ namespace DRES.Controllers
                         var existingStock = await _context.Stocks.FirstOrDefaultAsync(s =>
                             s.site_id == transactionDto.to_site_id &&
                             s.material_id == itemDto.material_id &&
-                            s.unit_type_id == itemDto.unit_type_id);
+                            s.unit_type_id == itemDto.unit_type_id
+                            && s.StockOwnerType =="site");
 
                         if (existingStock == null)
                         {
@@ -213,8 +251,8 @@ namespace DRES.Controllers
                                 site_id = transactionDto.to_site_id,
                                 unit_type_id = itemDto.unit_type_id,
                                 last_transaction_id = newTransaction.id,
+                                StockOwnerType="site",
                                 quantity = itemDto.quantity,
-                                CreatedAt = DateTime.Now,
                                 UpdatedAt = DateTime.Now
                             };
                             _context.Stocks.Add(newStock);
@@ -243,6 +281,170 @@ namespace DRES.Controllers
             }
         }
 
+
+        [HttpPost("IssueMaterialTransaction")]
+        public async Task<IActionResult> IssueMaterialTransaction([FromBody] CreateIssueTransactionDTO transactionDto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            // Start a database transaction scope to ensure data consistency
+            using (var dbTransaction = await _context.Database.BeginTransactionAsync())
+            {
+                try
+                {
+                   
+
+                    // Validate createdby user exists
+                    var createdByUser = await _context.Users.FindAsync(transactionDto.to_user_id);
+                    if (createdByUser == null)
+                    {
+                        return NotFound(new { message = "User ID not found" });
+                    }
+                    if (createdByUser.siteid != transactionDto.site_id)
+                    {
+                        return NotFound(new { message = "User not belong to this site" });
+                    }
+                    if (createdByUser.role != userrole.siteengineer)
+                    {
+                        return NotFound(new { message = "invalid user" });
+                    }
+
+                    
+                    // Validate from_site exists
+                    var fromSite = await _context.Sites.FindAsync(transactionDto.from_site_id);
+                    if (fromSite == null)
+                    {
+                        return NotFound(new { message = "From site not found" });
+                    }
+
+                    // Validate that to user (site engineer) exists if required (optional validation)
+                    var toUser = await _context.Users.FindAsync(transactionDto.to_user_id);
+                    if (toUser == null)
+                    {
+                        return NotFound(new { message = "Destination user (site engineer) not found" });
+                    }
+
+                    // Create the issue transaction record
+                    var newTransaction = new Transaction
+                    {
+                        invoice_number = null,
+                        transaction_type = "issue",
+                        transaction_date = DateTime.Now,
+                        site_id = transactionDto.site_id,
+                        request_id = transactionDto.request_id,
+                        remark = transactionDto.remark,
+                        form_supplier_id = null,
+                        from_site_id = transactionDto.from_site_id,
+                        to_site_id=null,
+                        to_user_id = transactionDto.to_user_id,
+                        status = "pending",
+                        received_by_user_id = null,
+                        recived_datetime = null,
+                        grand_total = null,
+                        createdby = transactionDto.createdby,
+                        createdat = DateTime.Now,
+                        updatedby = transactionDto.createdby,
+                        updatedat = DateTime.Now
+                    };
+
+                    _context.Transactions.Add(newTransaction);
+                    await _context.SaveChangesAsync();
+
+                    // Process each transaction item
+                    foreach (var itemDto in transactionDto.items.OrderBy(i => i.material_id))
+                    {
+
+                        var siteStock = await _context.Stocks.FirstOrDefaultAsync(s =>
+                          s.site_id == transactionDto.site_id &&
+                          s.material_id == itemDto.material_id &&
+                          s.unit_type_id == itemDto.unit_type_id
+                          && s.StockOwnerType == "site");
+
+                        if (siteStock == null)
+                        {
+                            throw new Exception("Stock record not found for the specified criteria.");
+                        }
+                        if (siteStock.quantity < itemDto.quantity)
+                        {
+                            throw new Exception($"Insufficient stock. Available: {siteStock.quantity}, Requested: {itemDto.quantity}");
+                        }
+
+                        var material = await _context.Materials.FindAsync(itemDto.material_id);
+                        if (material == null)
+                        {
+                            throw new Exception($"Material with ID {itemDto.material_id} not found");
+                        }
+
+                        var unit = await _context.Units.FindAsync(itemDto.unit_type_id);
+                        if (unit == null)
+                        {
+                            throw new Exception($"Unit with ID {itemDto.unit_type_id} not found");
+                        }
+
+                        // Create the transaction item record; pricing, gst, tax-related fields are left as null
+                        var transactionItem = new Transaction_Items
+                        {
+                            transaction_id = newTransaction.id, // assigned after saving the transaction
+                            material_id = itemDto.material_id,
+                            unit_type_id = itemDto.unit_type_id,
+                            quantity = itemDto.quantity,
+                            unit_price = null,
+                            tex_type = null,
+                            gst = null,
+                            texable = null,
+                            total = null
+                        };
+
+                        _context.Transaction_Items.Add(transactionItem);
+
+                        var existingStock = await _context.Stocks.FirstOrDefaultAsync(s =>
+                           s.user_id == transactionDto.to_user_id &&
+                           s.material_id == itemDto.material_id &&
+                           s.unit_type_id == itemDto.unit_type_id
+                           && s.StockOwnerType == "engineer");
+
+                        // Subtract stock from the issuing site exactly once per transaction item.
+                        siteStock.quantity -= itemDto.quantity;
+
+                        if (existingStock == null)
+                        {
+                            var newStock = new Stock
+                            {
+                                material_id = itemDto.material_id,
+                                user_id = transactionDto.to_user_id,
+                                unit_type_id = itemDto.unit_type_id,
+                                last_transaction_id = newTransaction.id,
+                                StockOwnerType = "engineer",
+                                quantity = itemDto.quantity,
+                                UpdatedAt = DateTime.Now
+                            };
+                            _context.Stocks.Add(newStock);
+                        }
+                        else
+                        {
+                            existingStock.quantity += itemDto.quantity;
+                            existingStock.UpdatedAt = DateTime.Now;
+                            existingStock.last_transaction_id = newTransaction.id;
+                        }
+
+                    }
+
+
+                    await _context.SaveChangesAsync();
+                    await dbTransaction.CommitAsync();
+
+                    return Ok(new { message = "Issue transaction created successfully", transactionId = newTransaction.id });
+                }
+                catch (Exception ex)
+                {
+                    await dbTransaction.RollbackAsync();
+                    return StatusCode(500, new { message = $"Error creating issue transaction: {ex.Message}" });
+                }
+            }
+        }
 
         // GET: api/Transaction/GetAll
         [HttpGet("GetAllTransactions")]
@@ -292,5 +494,7 @@ namespace DRES.Controllers
                 return StatusCode(500, new { message = $"Error retrieving transactions: {ex.Message}" });
             }
         }
+
+
     }
 }

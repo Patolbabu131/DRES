@@ -10,7 +10,7 @@ namespace DRES.Models
 
         public int material_id { get; set; }
 
-        public int site_id { get; set; }  // Null = Admin warehouse
+        public int? site_id { get; set; }  // Null = Admin warehouse
 
         public int unit_type_id { get; set; } 
 
@@ -18,19 +18,14 @@ namespace DRES.Models
 
         public int quantity { get; set; }
 
-        public int last_transaction_id { get; set; }
-        public DateTime CreatedAt { get; set; }
+        public string StockOwnerType { get; set; }
 
+        public int last_transaction_id { get; set; }
         public DateTime UpdatedAt { get; set; }
 
         public virtual Material Material { get; set; }
         public virtual Site Site { get; set; }
         public virtual Unit Unit { get; set; }
         public virtual User User { get; set; }
-
-
-
-
-
     }
 }
