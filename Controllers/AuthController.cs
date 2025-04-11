@@ -87,11 +87,12 @@ namespace DRES.Controllers
             var credentials = new SigningCredentials(_securityKey, SecurityAlgorithms.HmacSha256);
 
             // Pre-allocate array for better performance
-            var claims = new Claim[4]
+            var claims = new Claim[5]
             {
                 new Claim(ClaimTypes.Name, user.username),
                 new Claim(ClaimTypes.Role, user.role.ToString()),
                 new Claim(ClaimTypes.NameIdentifier, user.id.ToString()),
+                new Claim("site_id", user.siteid.ToString()),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 

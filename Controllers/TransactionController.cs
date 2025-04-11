@@ -237,12 +237,15 @@ namespace DRES.Controllers
                         grandTotal += itemDto.total;
 
                         // Update stock logic
-                        var existingStock = await _context.Stocks.FirstOrDefaultAsync(s =>
-                            s.site_id == transactionDto.to_site_id &&
-                            s.material_id == itemDto.material_id &&
-                            s.unit_type_id == itemDto.unit_type_id
-                            && s.StockOwnerType =="site");
-
+                      
+                        var existingStock = await _context.Stocks
+                                .FromSqlInterpolated(
+                                    $@"SELECT * FROM Stocks WITH (UPDLOCK) 
+                                       WHERE site_id = {transactionDto.to_site_id} 
+                                         AND material_id = {itemDto.material_id} 
+                                         AND unit_type_id = {itemDto.unit_type_id} 
+                                         AND StockOwnerType = 'site'")
+                                .FirstOrDefaultAsync();
                         if (existingStock == null)
                         {
                             var newStock = new Stock
@@ -357,11 +360,14 @@ namespace DRES.Controllers
                     foreach (var itemDto in transactionDto.items.OrderBy(i => i.material_id))
                     {
 
-                        var siteStock = await _context.Stocks.FirstOrDefaultAsync(s =>
-                          s.site_id == transactionDto.site_id &&
-                          s.material_id == itemDto.material_id &&
-                          s.unit_type_id == itemDto.unit_type_id
-                          && s.StockOwnerType == "site");
+                        var siteStock = await _context.Stocks
+                            .FromSqlInterpolated(
+                                $@"SELECT * FROM Stocks WITH (UPDLOCK) 
+                                   WHERE site_id = {transactionDto.site_id} 
+                                     AND material_id = {itemDto.material_id} 
+                                     AND unit_type_id = {itemDto.unit_type_id} 
+                                     AND StockOwnerType = 'site'")
+                            .FirstOrDefaultAsync();
 
                         if (siteStock == null)
                         {
@@ -400,11 +406,14 @@ namespace DRES.Controllers
 
                         _context.Transaction_Items.Add(transactionItem);
 
-                        var existingStock = await _context.Stocks.FirstOrDefaultAsync(s =>
-                           s.user_id == transactionDto.to_user_id &&
-                           s.material_id == itemDto.material_id &&
-                           s.unit_type_id == itemDto.unit_type_id
-                           && s.StockOwnerType == "engineer");
+                        var existingStock = await _context.Stocks
+                        .FromSqlInterpolated(
+                            $@"SELECT * FROM Stocks WITH (UPDLOCK) 
+                               WHERE user_id = {transactionDto.to_user_id} 
+                                 AND material_id = {itemDto.material_id} 
+                                 AND unit_type_id = {itemDto.unit_type_id} 
+                                 AND StockOwnerType = 'engineer'")
+                        .FirstOrDefaultAsync();
 
                         // Subtract stock from the issuing site exactly once per transaction item.
                         siteStock.quantity -= itemDto.quantity;
