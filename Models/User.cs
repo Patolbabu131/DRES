@@ -34,6 +34,7 @@ namespace DRES.Models
         public DateTime CreatedAt { get; set; }
 
         public DateTime UpdatedAt { get; set; }
+
         public virtual Site? Site { get; set; }
         public virtual ICollection<Stock> Stocks { get; set; } = new List<Stock>();
         public virtual ICollection<Transaction> Transactions { get; set; } = new List<Transaction>();

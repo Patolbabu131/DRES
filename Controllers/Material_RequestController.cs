@@ -28,9 +28,9 @@ namespace DRES.Controllers
         {
             // Material_Request fields
 
-            [Required(ErrorMessage = "Site ID is required.")]
-            [Range(1, int.MaxValue, ErrorMessage = "Site ID must be greater than 0.")]
-            public int site_id { get; set; }
+            //[Required(ErrorMessage = "Site ID is required.")]
+            //[Range(1, int.MaxValue, ErrorMessage = "Site ID must be greater than 0.")]
+            //public int site_id { get; set; }
 
             [Required(ErrorMessage = "RequestedBy (User ID) is required.")]
             [Range(1, int.MaxValue, ErrorMessage = "RequestedBy must be greater than 0.")]
@@ -93,8 +93,8 @@ namespace DRES.Controllers
         }
 
         // GET: api/Material_Request/GetAllRequests
-        [HttpGet("GetRequests/{userId}")]
-        public async Task<IActionResult> GetRequests(int userId)
+        [HttpGet("GetRequestsList/{userId}")]
+        public async Task<IActionResult> GetRequestsList(int userId)
         {
             try
             {
@@ -191,12 +191,7 @@ namespace DRES.Controllers
                 return BadRequest(ModelState);
             }
 
-            // Check if the site exists
-            var site = await _context.Sites.FindAsync(requestDto.site_id);
-            if (site == null)
-            {
-                return NotFound(new { message = "Invalid site ID." });
-            }
+           
 
             // Check if the user exists
             var user = await _context.Users.FindAsync(requestDto.requested_by);
@@ -204,12 +199,13 @@ namespace DRES.Controllers
             {
                 return NotFound(new { message = "Invalid requested_by (User ID)." });
             }
-
-            // Check if the user belongs to the same site
-            if (user.siteid != requestDto.site_id)
+            // Check if the site exists
+            var site = await _context.Sites.FindAsync(user.siteid);
+            if (site == null)
             {
-                return BadRequest(new { message = "User does not belong to the specified site." });
+                return NotFound(new { message = "Invalid site ID." });
             }
+
 
             // Start a transaction to ensure atomicity.
             using (var transaction = await _context.Database.BeginTransactionAsync())
@@ -218,7 +214,7 @@ namespace DRES.Controllers
                 {
                     var newRequest = new Material_Request
                     {
-                        site_id = requestDto.site_id,
+                        site_id = site.id,
                         request_date = DateTime.Now,
                         requested_by = requestDto.requested_by,
                         remark = requestDto.remark,

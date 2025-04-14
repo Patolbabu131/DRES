@@ -105,6 +105,7 @@ namespace DRES.Controllers
                                  AND unit_type_id = {item.unit_id} 
                                  AND StockOwnerType = 'engineer'")
                        .FirstOrDefaultAsync();
+
                     if (userexistingStock == null)
                     {
                         throw new Exception("Stock record not found for the specified criteria.");
@@ -137,42 +138,90 @@ namespace DRES.Controllers
             }
         }
 
-        // GET: api/Material_Consumption/GetByUser/5
+   
+        // GET: api/Material_Consumption/GetConsumption/{userId}
         [HttpGet("GetConsumption/{userId}")]
         public async Task<IActionResult> GetConsumption(int userId)
         {
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null)
-                return NotFound(new { message = "User not found." });
-
-            var records = await _context.UserAMaterial_ConsumptionctivityLogs
-                .Include(mc => mc.Site)
-                .Include(mc => mc.Material_Consumption_Item)
-                    .ThenInclude(i => i.Material)
-                .Include(mc => mc.Material_Consumption_Item)
-                    .ThenInclude(i => i.Unit)
-                .OrderByDescending(mc => mc.id)
-                .ToListAsync();
-
-            var response = records.Select(r => new
+            try
             {
-                r.id,
-                r.date,
-                site_name = r.Site?.sitename ?? "N/A",
-                remark = r.remark,
-                createdon = r.createdon,
-                items = r.Material_Consumption_Item.Select(i => new
+                // Get the user based on the provided userId.
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null)
                 {
-                    i.id,
-                    i.material_id,
-                    material_name = i.Material?.material_name ?? "Unknown",
-                    unit_name = i.Unit?.unitname ?? "Unknown",
-                    unit_symbol = i.Unit?.unitsymbol ?? "",
-                    i.quantity
-                }).ToList()
-            });
+                    return NotFound(new { message = "User not found" });
+                }
 
-            return Ok(new { message = "Success", data = response });
+                // Prepare the query for Material Consumption including related Site, Items, Material, and Unit.
+                IQueryable<Material_Consumption> query = _context.UserAMaterial_ConsumptionctivityLogs
+                    .Include(c => c.Site)
+                    .Include(c => c.Material_Consumption_Item)
+                        .ThenInclude(i => i.Material)
+                    .Include(c => c.Material_Consumption_Item)
+                        .ThenInclude(i => i.Unit);
+
+                // Filter the query based on the user's role.
+                if (user.role == userrole.sitemanager)
+                {
+                    // For site managers, filter by the site id associated with the user.
+                    query = query.Where(c => c.site_id == user.siteid);
+                }
+                else if (user.role == userrole.siteengineer)
+                {
+                    // For site engineers, filter consumption logs where the creating user is the current user.
+                    query = query.Where(c => c.user_id == userId);
+                }
+                // For admin, no filter is applied.
+
+                // Execute the query.
+                var consumptionLogs = await query.OrderByDescending(c => c.id).ToListAsync();
+
+                // Project the consumption logs into the response DTO.
+                var response = consumptionLogs.Select(c => new
+                {
+                    c.id,
+                    c.date,
+                    site_name = c.Site != null ? c.Site.sitename : "N/A",
+                    c.remark,
+                    c.createdon,
+                    items = c.Material_Consumption_Item.Select(i => new
+                    {
+                        i.id,
+                        i.material_id,
+                        material_name = i.Material?.material_name ?? "Unknown",
+                        unit_name = i.Unit?.unitname ?? "Unknown",
+                        unit_symbol = i.Unit?.unitsymbol ?? "",
+                        i.quantity
+                    }).ToList()
+                }).ToList();
+
+                return Ok(new { message = "Success", data = response });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error: {ex.Message}" });
+            }
         }
+
+
+
+        [HttpGet("GetStock/")]
+        public async Task<IActionResult> GetStock([FromQuery] int user_id, [FromQuery] int material_id, [FromQuery] int unit_type_id)
+        {
+            var stock = await _context.Stocks
+                .FromSqlInterpolated(
+                    $@"SELECT * FROM Stocks WITH (UPDLOCK)
+                       WHERE user_id = {user_id} 
+                         AND material_id = {material_id} 
+                         AND unit_type_id = {unit_type_id} 
+                         AND StockOwnerType = 'engineer'")
+                .FirstOrDefaultAsync();
+
+            // Return the quantity, or 0 if not found.
+            int quantity = stock?.quantity ?? 0;
+            return Ok(quantity);
+
+        }
+
     }
 }

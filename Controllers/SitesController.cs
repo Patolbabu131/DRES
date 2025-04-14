@@ -90,16 +90,43 @@ namespace DRES.Controllers
         }
 
         // GET: api/sites
-        [HttpGet("GetAllSites")]
-        public async Task<IActionResult> GetAllSites()
+    
+        [HttpGet("GetSitesList/{userId}")]
+        public async Task<IActionResult> GetSitesList(int userId)
         {
             try
             {
-                var sites = await _context.Sites
-                    .Where(s => s.id != 1) // Exclude site with id = 1
-                    .OrderByDescending(r => r.id).Select(s => MapToResponse(s))
+                var currentUser = await _context.Users
+                    .Include(u => u.Site)
+                    .FirstOrDefaultAsync(u => u.id == userId);
 
+                if (currentUser == null)
+                {
+                    return NotFound(new { message = "User not found." });
+                }
 
+                IQueryable<Site> query = _context.Sites
+                    .Where(s => s.id != 1); // Exclude default site with id = 1
+
+                if (currentUser.role == userrole.admin)
+                {
+                    // No change needed, admin sees all sites (except id=1)
+                }
+                else if (currentUser.role == userrole.sitemanager || currentUser.role == userrole.siteengineer)
+                {
+                    int siteId = currentUser.Site?.id ?? 0;
+
+                    // Only return the site associated with the user
+                    query = query.Where(s => s.id == siteId);
+                }
+                else
+                {
+                    return BadRequest(new { message = "User role not recognized." });
+                }
+
+                var sites = await query
+                    .OrderByDescending(s => s.id)
+                    .Select(s => MapToResponse(s)) // assuming MapToResponse returns a DTO
                     .ToListAsync();
 
                 return Ok(new { data = sites });
@@ -110,6 +137,8 @@ namespace DRES.Controllers
                     new { message = $"Error retrieving sites: {ex.Message}" });
             }
         }
+
+
 
         // GET: api/sites/5
         [HttpGet("GetSiteById/{id}")]

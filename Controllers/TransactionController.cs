@@ -469,7 +469,7 @@ namespace DRES.Controllers
                         .ThenInclude(i => i.Material)
                     .Include(t => t.TransactionItems)
                         .ThenInclude(i => i.Unit)
-                    .OrderByDescending(t => t.transaction_date)
+                    .OrderByDescending(t => t.id)
                     .ToListAsync();
 
                 var response = transactions.Select(t => new TransactionResponseDTO
@@ -502,6 +502,29 @@ namespace DRES.Controllers
             {
                 return StatusCode(500, new { message = $"Error retrieving transactions: {ex.Message}" });
             }
+        }
+
+
+
+
+
+
+        [HttpGet("GetSiteStock/")]
+        public async Task<IActionResult> GetSiteStock([FromQuery] int site_id, [FromQuery] int material_id, [FromQuery] int unit_type_id)
+        {
+            var siteStock = await _context.Stocks
+                            .FromSqlInterpolated(
+                                $@"SELECT * FROM Stocks WITH (UPDLOCK) 
+                                   WHERE site_id = {site_id} 
+                                     AND material_id = {material_id} 
+                                     AND unit_type_id = {unit_type_id} 
+                                     AND StockOwnerType = 'site'")
+                            .FirstOrDefaultAsync();
+
+            // Return the quantity, or 0 if not found.
+            int quantity = siteStock?.quantity ?? 0;
+            return Ok(quantity);
+
         }
 
 

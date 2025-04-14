@@ -28,14 +28,59 @@ namespace DRES.Controllers
         }
 
 
-        [HttpGet("GetAllUsers")]
-        public async Task<IActionResult> GetAllUsers()
+
+
+        [HttpGet("GetUserList/{userId}")]
+        public async Task<IActionResult> GetUserList(int userId)
         {
             try
             {
-                var users = await _context.Users
-                    .Where(u => !(u.id == 3 || u.role == userrole.admin))
-                     .OrderByDescending(r => r.id)
+                // Retrieve the current user, including the related Site if available
+                var currentUser = await _context.Users
+                    .Include(u => u.Site)
+                    .FirstOrDefaultAsync(u => u.id == userId);
+
+                if (currentUser == null)
+                {
+                    return NotFound(new { message = "User not found." });
+                }
+
+                // Prepare the base query including the Site relation
+                IQueryable<User> query = _context.Users.Include(u => u.Site);
+
+                // Role-based filtering
+                if (currentUser.role == userrole.admin)
+                {
+                    // For admin users, no additional filtering based on site/role.
+                    // However, we will filter out admin details below.
+                }
+                else if (currentUser.role == userrole.sitemanager)
+                {
+                    // Retrieve the site id from the current user's site, or default to 0 if null.
+                    int siteId = currentUser.Site?.id ?? 0;
+
+                    // For a Site Manager, return only users belonging to the same site
+                    // and having a role of siteengineer.
+                    query = query.Where(u => u.Site != null &&
+                                             u.Site.id == siteId &&
+                                             u.role == userrole.siteengineer);
+                }
+                else if (currentUser.role == userrole.siteengineer)
+                {
+                    // For a Site Engineer, return only the current user's details.
+                    query = query.Where(u => u.id == userId);
+                }
+                else
+                {
+                    return BadRequest(new { message = "User role not recognized." });
+                }
+
+                // Exclude any admin details from the results, regardless of caller.
+                query = query.Where(u => u.role != userrole.admin);
+
+                // Execute the query and project to the response DTO
+                var users = await query
+                    .OrderByDescending(u => u.id)
                     .Select(u => new UserResponse
                     {
                         Id = u.id,
@@ -54,7 +99,6 @@ namespace DRES.Controllers
                     new { message = $"Error retrieving users: {ex.Message}" });
             }
         }
-
 
 
         [HttpGet("GetUserById/{id}")]
@@ -156,21 +200,27 @@ namespace DRES.Controllers
                     return BadRequest(new { message = "Admins can only create site managers/engineers" });
                 }
 
-                // Site validation
-                var siteExists = await _context.Sites.AnyAsync(s => s.id == request.SiteId);
-                if (!siteExists)
+                var site = await _context.Sites.FindAsync(request.SiteId);
+                if (site == null)
                     return BadRequest(new { message = "Invalid Site ID" });
 
-                // Generate password hash
+                string siteShort = GetSiteShortName(site.sitename);
+                string roleShort = GetRoleShort(request.Role);
+                string cleanOriginalUsername = request.Username.Replace(" ", "");
+                string formattedUsername = $"{siteShort}-{roleShort}-{cleanOriginalUsername}";
 
-                string usernameNoSpaces = request.Username.Replace(" ", "");
-                string firstFourUsername = usernameNoSpaces.Length >= 4 ? usernameNoSpaces.Substring(0, 4) : usernameNoSpaces;
+                // Check again for unique formatted username
+                if (await _context.Users.AnyAsync(u => u.username == formattedUsername))
+                    return Conflict(new { message = "Generated username already exists" });
+
+                // Generate password
+                string firstFourUsername = cleanOriginalUsername.Length >= 4 ? cleanOriginalUsername.Substring(0, 4) : cleanOriginalUsername;
                 string lastFourPhone = request.Phone.Length >= 4 ? request.Phone.Substring(request.Phone.Length - 4) : request.Phone;
                 var password = $"{firstFourUsername}@{lastFourPhone}";
 
                 var newUser = new User
                 {
-                    username = request.Username,
+                    username = formattedUsername,
                     phone = request.Phone,
                     role = request.Role,
                     siteid = request.SiteId,
@@ -232,9 +282,21 @@ namespace DRES.Controllers
 
 
 
+                var site = await _context.Sites.FindAsync(existingUser.siteid);
+                if (site == null)
+                    return BadRequest(new { message = "Invalid Site ID" });
 
-                // Update fields
-                existingUser.username = request.Username;
+                string siteShort = GetSiteShortName(site.sitename);
+                string roleShort = GetRoleShort(existingUser.role);
+                string cleanOriginalUsername = request.Username.Replace(" ", "");
+                string formattedUsername = $"{siteShort}-{roleShort}-{cleanOriginalUsername}";
+
+                // Check again for unique formatted username
+                if (await _context.Users.AnyAsync(u => u.username == formattedUsername))
+                    return Conflict(new { message = "Generated username already exists" });
+
+
+                existingUser.username = formattedUsername;
                 existingUser.phone = request.Phone;
                 existingUser.updatedbyid = request.UpdatedById;
                 existingUser.UpdatedAt = GetIndianTime();
@@ -256,7 +318,37 @@ namespace DRES.Controllers
         }
 
 
+        private string GetSiteShortName(string siteName)
+        {
+            var words = siteName.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            string shortForm = "";
 
+            foreach (var word in words)
+            {
+                if (!string.IsNullOrWhiteSpace(word) && shortForm.Length < 3)
+                {
+                    shortForm += char.ToUpper(word[0]);
+                }
+            }
+
+            if (shortForm.Length < 3)
+            {
+                shortForm = siteName.Replace(" ", "").Substring(0, Math.Min(3, siteName.Length)).ToUpper();
+            }
+
+            return shortForm.PadRight(3, 'X'); // fallback
+        }
+
+        private string GetRoleShort(userrole role)
+        {
+            return role switch
+            {
+                userrole.sitemanager => "SM",
+                userrole.siteengineer => "SE",
+                userrole.admin => "ADM",
+                _ => "OTH"
+            };
+        }
 
         [HttpDelete("DeleteUser/{id}")]
         public async Task<IActionResult> DeleteUser(int id)

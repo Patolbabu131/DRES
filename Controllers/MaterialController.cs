@@ -105,14 +105,14 @@ namespace DRES.Controllers
                 var material = await _context.Materials.FindAsync(id);
                 if (material == null)
                 {
-                    return NotFound(new { message = "Material not found" });
+                    return NotFound(new { message = "Request not found" });
                 }
 
                 return Ok(new { message = "Success", data = MapToResponse(material) });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = $"Error retrieving material: {ex.Message}" });
+                return StatusCode(500, new { message = $"Error retrieving Request: {ex.Message}" });
             }
         }
 
