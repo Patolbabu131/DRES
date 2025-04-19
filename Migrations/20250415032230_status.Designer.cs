@@ -4,6 +4,7 @@ using DRES.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DRES.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250415032230_status")]
+    partial class status
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -124,9 +127,6 @@ namespace DRES.Migrations
                     b.Property<int?>("approved_by")
                         .HasColumnType("int");
 
-                    b.Property<bool>("forwarded_to_ho")
-                        .HasColumnType("bit");
-
                     b.Property<string>("remark")
                         .HasColumnType("nvarchar(max)");
 
@@ -157,6 +157,9 @@ namespace DRES.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("id"));
+
+                    b.Property<int?>("issued_quantity")
+                        .HasColumnType("int");
 
                     b.Property<int>("material_id")
                         .HasColumnType("int");

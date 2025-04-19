@@ -16,7 +16,7 @@ namespace DRES.Models
         public int? approved_by { get; set; }
         public DateTime? approval_date { get; set; }
         public bool forwarded_to_ho { get; set; }
-
+        public string status { get; set; }
         public virtual Site Site { get; set; }
         public virtual ICollection<Material_Request_Item> Material_Request_Item { get; set; } = new List<Material_Request_Item>();
     }

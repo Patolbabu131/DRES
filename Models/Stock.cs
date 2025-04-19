@@ -10,7 +10,7 @@ namespace DRES.Models
 
         public int material_id { get; set; }
 
-        public int? site_id { get; set; }  // Null = Admin warehouse
+        public int? site_id { get; set; } 
 
         public int unit_type_id { get; set; } 
 

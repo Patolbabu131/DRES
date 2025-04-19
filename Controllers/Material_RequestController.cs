@@ -63,17 +63,13 @@ namespace DRES.Controllers
         public class MaterialRequestResponseDTO
         {
             public int id { get; set; }
-            // Return the site name instead of the numeric site_id.
             public string site_name { get; set; }
             public DateTime request_date { get; set; }
-            // Return the requesting user's name and role (e.g., "john (sitemanager)")
             public string requested_by { get; set; }
             public string? remark { get; set; }
-            // Return approved user details if available.
             public string? approved_by { get; set; }
             public DateTime? approval_date { get; set; }
-            public bool forwarded_to_ho { get; set; }
-            // Collection of request items.
+            public string status { get; set; }
             public List<MaterialRequestItemResponseDTO> items { get; set; } = new List<MaterialRequestItemResponseDTO>();
         }
 
@@ -82,14 +78,11 @@ namespace DRES.Controllers
         {
             public int id { get; set; }
             public int request_id { get; set; }
-            // Return the material name.
             public string material_name { get; set; }
-            // Return the unit name and symbol.
             public string unit_name { get; set; }
             public string unit_symbol { get; set; }
             public int quantity { get; set; }
-            public int? issued_quantity { get; set; }
-            public string status { get; set; }
+            
         }
 
         // GET: api/Material_Request/GetAllRequests
@@ -105,7 +98,6 @@ namespace DRES.Controllers
                     return NotFound(new { message = "User not found" });
                 }
 
-                // Prepare the query for Material Requests including related Site, Items, Material, and Unit.
                 IQueryable<Material_Request> query = _context.Material_Requests
                     .Include(r => r.Site)
                     .Include(r => r.Material_Request_Item)
@@ -113,20 +105,19 @@ namespace DRES.Controllers
                     .Include(r => r.Material_Request_Item)
                         .ThenInclude(i => i.Unit);
 
-                // Filter the query based on the user's role.
                 if (user.role == userrole.sitemanager)
                 {
-                    // For site managers, filter by the siteid associated with the user.
-                    query = query.Where(r => r.site_id == user.siteid);
+                    query = query.Where(r => r.site_id == user.siteid && r.forwarded_to_ho == false);
                 }
                 else if (user.role == userrole.siteengineer)
                 {
-                    // For site engineers, filter requests where the requesting user is the current user.
                     query = query.Where(r => r.requested_by == userId);
                 }
-                // For admin, no filter is needed.
+                else if (user.role == userrole.admin)
+                {
+                    query = query.Where(r => r.forwarded_to_ho == true);
+                }
 
-                // Execute the query.
                 var requests = await query.OrderByDescending(r => r.id).ToListAsync();
 
                 // Collect all unique user IDs for requested_by and approved_by.
@@ -135,12 +126,10 @@ namespace DRES.Controllers
                     .Distinct()
                     .ToList();
 
-                // Retrieve the users associated with those IDs.
                 var users = await _context.Users
                     .Where(u => userIds.Contains(u.id))
                     .ToListAsync();
 
-                // Project the requests into the response DTO.
                 var response = requests.Select(r => new MaterialRequestResponseDTO
                 {
                     id = r.id,
@@ -151,12 +140,11 @@ namespace DRES.Controllers
                         ? $"{reqUser.username} ({reqUser.role})"
                         : "Unknown",
                     remark = r.remark,
-                    // If approved_by is set, lookup and format the approved user.
                     approved_by = r.approved_by != null && users.FirstOrDefault(u => u.id == r.approved_by) is User apprUser
                         ? $"{apprUser.username} ({apprUser.role})"
                         : null,
                     approval_date = r.approval_date,
-                    forwarded_to_ho = r.forwarded_to_ho,
+                    status = r.status,
                     items = r.Material_Request_Item.Select(i => new MaterialRequestItemResponseDTO
                     {
                         id = i.id,
@@ -165,8 +153,6 @@ namespace DRES.Controllers
                         unit_name = i.Unit?.unitname ?? "Unknown",
                         unit_symbol = i.Unit?.unitsymbol ?? "",
                         quantity = i.quantity,
-                        issued_quantity = i.issued_quantity,
-                        status = i.status
                     }).ToList()
                 }).ToList();
 
@@ -182,6 +168,7 @@ namespace DRES.Controllers
 
 
 
+
         // POST: api/Material_Request/CreateRequest
         [HttpPost("CreateRequest")]
         public async Task<IActionResult> CreateRequest([FromBody] CreateMaterialRequestDTO requestDto)
@@ -191,21 +178,25 @@ namespace DRES.Controllers
                 return BadRequest(ModelState);
             }
 
-           
+
 
             // Check if the user exists
             var user = await _context.Users.FindAsync(requestDto.requested_by);
+
             if (user == null)
             {
                 return NotFound(new { message = "Invalid requested_by (User ID)." });
             }
+
+            
+
             // Check if the site exists
             var site = await _context.Sites.FindAsync(user.siteid);
             if (site == null)
             {
                 return NotFound(new { message = "Invalid site ID." });
             }
-
+            bool forwardedToHo = (user.role == userrole.sitemanager);
 
             // Start a transaction to ensure atomicity.
             using (var transaction = await _context.Database.BeginTransactionAsync())
@@ -220,7 +211,8 @@ namespace DRES.Controllers
                         remark = requestDto.remark,
                         approved_by = null,
                         approval_date = null,
-                        forwarded_to_ho = false
+                        status= "Pending",
+                        forwarded_to_ho= forwardedToHo
                     };
 
                     _context.Material_Requests.Add(newRequest);
@@ -233,9 +225,7 @@ namespace DRES.Controllers
                             request_id = newRequest.id,
                             material_id = itemDto.material_id,
                             unit_id = itemDto.unit_id,
-                            quantity = itemDto.quantity,
-                            issued_quantity = null,
-                            status = "pending"
+                            quantity = itemDto.quantity
                         };
 
                         _context.Material_Request_Item.Add(newItem);

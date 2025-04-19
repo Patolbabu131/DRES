@@ -138,7 +138,7 @@ namespace DRES.Controllers
             public decimal? texable { get; set; } // Added
             public decimal total { get; set; }
         }
-
+            
         [HttpPost("CreateSiteTransaction")]
         public async Task<IActionResult> CreateSiteTransaction([FromBody] CreateTransactionDTO transactionDto)
         {
