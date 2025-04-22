@@ -87,7 +87,8 @@ namespace DRES.Controllers
                         Username = u.username,
                         Phone = u.phone,
                         Role = u.role.ToString(),
-                        SiteName = u.Site != null ? u.Site.sitename : null
+                        SiteName = u.Site != null ? u.Site.sitename : null,
+                        site_id=u.siteid
                     })
                     .ToListAsync();
 
@@ -118,7 +119,8 @@ namespace DRES.Controllers
                         Username = u.username,
                         Phone = u.phone,
                         Role = u.role.ToString(),
-                        SiteName = u.Site != null ? u.Site.sitename : null
+                        SiteName = u.Site != null ? u.Site.sitename : null,
+                        site_id=u.siteid
                     })
                     .FirstOrDefaultAsync();
 
@@ -423,7 +425,8 @@ namespace DRES.Controllers
             Username = user.username,
             Phone = user.phone,
             Role = user.role.ToString(),
-            SiteName = user.Site?.sitename
+            SiteName = user.Site?.sitename,
+            site_id=user.siteid
         };
 
         // Updated UserResponse
@@ -434,6 +437,7 @@ namespace DRES.Controllers
             public string Phone { get; set; }
             public string Role { get; set; }
             public string SiteName { get; set; }
+            public int? site_id { get; set; }
         }
 
 

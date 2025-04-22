@@ -42,14 +42,11 @@ namespace DRES.Controllers
             [Required(ErrorMessage = "Created by user is required")]
             public int createdby { get; set; }
 
-            [Required(ErrorMessage = "Transaction type is required")]
-            public string transaction_type { get; set; }
-
             [Required(ErrorMessage = "At least one transaction item is required")]
             public List<CreateTransactionItemDTO> items { get; set; } = new();
         }
 
-   
+
         public class CreateTransactionItemDTO
         {
             [Required(ErrorMessage = "Material ID is required")]
@@ -67,7 +64,7 @@ namespace DRES.Controllers
             public decimal unit_price { get; set; }
 
             [Required(ErrorMessage = "GST percentage is required")]
-            [Range(0, 18, ErrorMessage = "GST must be between 0 and 100")]
+            [Range(0, 100, ErrorMessage = "GST must be between 0 and 100")]
             public int gst { get; set; }
 
             [Required(ErrorMessage = "Total amount is required")]
@@ -93,7 +90,7 @@ namespace DRES.Controllers
 
         public class CreateIssueTransactionDTO
         {
-            
+
             [Required(ErrorMessage = "Site ID is required")]
             public int site_id { get; set; }
             public int? request_id { get; set; }
@@ -138,7 +135,7 @@ namespace DRES.Controllers
             public decimal? texable { get; set; } // Added
             public decimal total { get; set; }
         }
-            
+
         [HttpPost("CreateSiteTransaction")]
         public async Task<IActionResult> CreateSiteTransaction([FromBody] CreateTransactionDTO transactionDto)
         {
@@ -170,16 +167,16 @@ namespace DRES.Controllers
                     {
                         invoice_number = transactionDto.invoice_number,
                         transaction_date = transactionDto.transaction_date,
-                        transaction_type = transactionDto.transaction_type,
+                        transaction_type = "Inward",
                         request_id = transactionDto.request_id,
                         remark = transactionDto.remark,
-                        site_id=transactionDto.to_site_id,
+                        site_id = transactionDto.to_site_id,
                         form_supplier_id = transactionDto.form_supplier_id,
                         to_site_id = transactionDto.to_site_id,
                         createdby = transactionDto.createdby,
                         createdat = DateTime.Now,
                         updatedby = transactionDto.createdby,
-                        
+
                         updatedat = DateTime.Now,
                         status = "completed" // Default status
                     };
@@ -237,7 +234,7 @@ namespace DRES.Controllers
                         grandTotal += itemDto.total;
 
                         // Update stock logic
-                      
+
                         var existingStock = await _context.Stocks
                                 .FromSqlInterpolated(
                                     $@"SELECT * FROM Stocks WITH (UPDLOCK) 
@@ -254,7 +251,7 @@ namespace DRES.Controllers
                                 site_id = transactionDto.to_site_id,
                                 unit_type_id = itemDto.unit_type_id,
                                 last_transaction_id = newTransaction.id,
-                                StockOwnerType="site",
+                                StockOwnerType = "site",
                                 quantity = itemDto.quantity,
                                 UpdatedAt = DateTime.Now
                             };
@@ -298,7 +295,7 @@ namespace DRES.Controllers
             {
                 try
                 {
-                   
+
 
                     // Validate createdby user exists
                     var createdByUser = await _context.Users.FindAsync(transactionDto.to_user_id);
@@ -315,7 +312,7 @@ namespace DRES.Controllers
                         return NotFound(new { message = "invalid user" });
                     }
 
-                    
+
                     // Validate from_site exists
                     var fromSite = await _context.Sites.FindAsync(transactionDto.from_site_id);
                     if (fromSite == null)
@@ -334,16 +331,16 @@ namespace DRES.Controllers
                     var newTransaction = new Transaction
                     {
                         invoice_number = null,
-                        transaction_type = "issue",
+                        transaction_type = "Issue To Engineer",
                         transaction_date = DateTime.Now,
                         site_id = transactionDto.site_id,
                         request_id = transactionDto.request_id,
                         remark = transactionDto.remark,
                         form_supplier_id = null,
                         from_site_id = transactionDto.from_site_id,
-                        to_site_id=null,
+                        to_site_id = null,
                         to_user_id = transactionDto.to_user_id,
-                        status = "pending",
+                        status = "completed",
                         received_by_user_id = null,
                         recived_datetime = null,
                         grand_total = null,
@@ -443,6 +440,22 @@ namespace DRES.Controllers
 
 
                     await _context.SaveChangesAsync();
+                    if (transactionDto.request_id != null)
+                    {
+                        var request = await _context.Material_Requests.FindAsync(transactionDto.request_id);
+                        if (request == null)
+                        {
+                            throw new Exception("Request not found");
+                        }
+
+                        
+
+                            request.status = "Fulfilled";
+                        request.approved_by = transactionDto.createdby;
+                        request.approval_date = DateTime.Now;
+
+                        await _context.SaveChangesAsync();
+                    }
                     await dbTransaction.CommitAsync();
 
                     return Ok(new { message = "Issue transaction created successfully", transactionId = newTransaction.id });
@@ -455,54 +468,9 @@ namespace DRES.Controllers
             }
         }
 
-        // GET: api/Transaction/GetAll
-        [HttpGet("GetAllTransactions")]
-        public async Task<IActionResult> GetAllTransactions()
-        {
-            try
-            {
-                var transactions = await _context.Transactions
-                    .Include(t => t.Supplier)
-                    .Include(t => t.Site)
-                    .Include(t => t.user)
-                    .Include(t => t.TransactionItems)
-                        .ThenInclude(i => i.Material)
-                    .Include(t => t.TransactionItems)
-                        .ThenInclude(i => i.Unit)
-                    .OrderByDescending(t => t.id)
-                    .ToListAsync();
 
-                var response = transactions.Select(t => new TransactionResponseDTO
-                {
-                    id = t.id,
-                    invoice_number = t.invoice_number,
-                    transaction_date = t.transaction_date,
-                    transaction_type = t.transaction_type,
-                    supplier_name = t.Supplier?.company_name,
-                    from_site = t.Site?.sitename ?? "Supplier",
-                    to_site = _context.Sites.FirstOrDefault(s => s.id == t.to_site_id)?.sitename ?? "Unknown",
-                    remark = t.remark,
-                    grand_total = t.grand_total, // Added
-                    items = t.TransactionItems.Select(i => new TransactionItemResponseDTO
-                    {
-                        id = i.id,
-                        material_name = i.Material?.material_name ?? "Unknown",
-                        unit_symbol = i.Unit?.unitsymbol ?? "",
-                        quantity = i.quantity,
-                        unit_price = i.unit_price ?? 0,
-                        gst = i.gst ?? 0,
-                        texable = i.texable, // Added
-                        total = i.total ?? 0
-                    }).ToList()
-                });
 
-                return Ok(new { message = "Success", data = response });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = $"Error retrieving transactions: {ex.Message}" });
-            }
-        }
+
 
 
 
@@ -528,5 +496,301 @@ namespace DRES.Controllers
         }
 
 
+        public class CombinedTransactionDto
+        {
+            public string VoucherNo { get; set; }        // e.g. “P123” or “C456”
+            public string SiteName { get; set; }         // from Site.Name
+            public DateTime Date { get; set; }           // consumption.date or transaction.transaction_date
+            public string TransactionType { get; set; }  // e.g. “Purchase”, “Consumption”
+            public DateTime CreatedOn { get; set; }      // consumption.createdon or transaction.createdat
+        }
+
+
+        // GET: api/Transactions/GetAllTransactions/{userId}
+        [HttpGet("GetAllTransactions/{userId}")]
+        public async Task<IActionResult> GetAllTransactions(int userId)
+        {
+            try
+            {
+                // 1) Fetch the user
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null)
+                    return NotFound(new { message = "User not found" });
+
+                // 2) Start from base sets
+                IQueryable<Material_Consumption> consBase = _context.UserAMaterial_ConsumptionctivityLogs;
+                IQueryable<Transaction> txBase = _context.Transactions;
+
+                // 3) Apply per-role filters
+                switch (user.role)
+                {
+                    case userrole.admin:
+                        // no filtering
+                        break;
+
+                    case userrole.sitemanager:
+                        consBase = consBase.Where(mc => mc.site_id == user.siteid);
+                        txBase = txBase.Where(t => t.site_id == user.siteid);
+                        break;
+
+                    case userrole.siteengineer:
+                        consBase = consBase.Where(mc => mc.user_id == userId);
+                        txBase = txBase.Where(t => t.to_user_id == userId);
+                        break;
+
+                    default:
+                        return Forbid();
+                }
+
+                // 4) Build the two projections
+                var consumptionQuery = consBase
+                    .Join(_context.Sites,
+                          mc => mc.site_id,
+                          s => s.id,
+                          (mc, s) => new CombinedTransactionDto
+                          {
+                              VoucherNo = "C" + mc.id,
+                              SiteName = s.sitename,
+                              Date = mc.date,
+                              TransactionType = "Consumption",
+                              CreatedOn = mc.createdon
+                          });
+
+                var transactionQuery = txBase
+                    .Where(t => t.site_id.HasValue)
+                    .Join(_context.Sites,
+                          t => t.site_id!.Value,
+                          s => s.id,
+                          (t, s) => new CombinedTransactionDto
+                          {
+                              VoucherNo = t.transaction_type.Substring(0, 1).ToUpper() + t.id,
+                              SiteName = s.sitename,
+                              Date = t.transaction_date,
+                              TransactionType = t.transaction_type,
+                              CreatedOn = t.createdat
+                          });
+
+                // 5) Union, order, return
+                var allTransactions = await consumptionQuery
+                    .Union(transactionQuery)
+                    .OrderByDescending(x => x.CreatedOn)
+                    .ToListAsync();
+
+                return Ok(new
+                {
+                    message = "Success",
+                    data = allTransactions
+                });
+            }
+            catch (Exception ex)
+            {
+                // Log ex here if you have a logger, e.g. _logger.LogError(ex, "…");
+                return StatusCode(500, new { message = $"An error occurred: {ex.Message}" });
+            }
+        }
+
+
+
+
+        public class CreateInterSiteTransactionDTO
+        {
+            [Required(ErrorMessage = "From site ID is required")]
+            public int from_site_id { get; set; }
+
+            [Required(ErrorMessage = "To site ID is required")]
+            public int to_site_id { get; set; }
+
+            public int? request_id { get; set; }
+            public string? remark { get; set; }
+
+            [Required(ErrorMessage = "Created by user is required")]
+            public int createdby { get; set; }
+
+            [Required(ErrorMessage = "At least one transaction item is required")]
+            public List<CreateInterSiteTransactionItemDTO> items { get; set; } = new();
+        }
+
+        public class CreateInterSiteTransactionItemDTO
+        {
+            [Required(ErrorMessage = "Material ID is required")]
+            public int material_id { get; set; }
+
+            [Required(ErrorMessage = "Unit type ID is required")]
+            public int unit_type_id { get; set; }
+
+            [Required(ErrorMessage = "Quantity is required")]
+            [Range(1, int.MaxValue, ErrorMessage = "Quantity must be at least 1")]
+            public int quantity { get; set; }
+        }
+            [HttpPost("CreateInterSiteTransaction")]
+            public async Task<IActionResult> CreateInterSiteTransaction([FromBody] CreateInterSiteTransactionDTO transactionDto)
+            {
+                if (!ModelState.IsValid)
+                {
+                    return BadRequest(ModelState);
+                }
+
+                using (var dbTransaction = await _context.Database.BeginTransactionAsync())
+                {
+                    try
+                    {
+                        // Validate sites
+                        var fromSite = await _context.Sites.FindAsync(transactionDto.from_site_id);
+                        var toSite = await _context.Sites.FindAsync(transactionDto.to_site_id);
+                        if (fromSite == null || toSite == null)
+                        {
+                            return NotFound(new { message = "From or To site not found" });
+                        }
+
+                        if (transactionDto.from_site_id == transactionDto.to_site_id)
+                        {
+                            return BadRequest(new { message = "From and To sites must be different" });
+                        }
+
+                        // Validate createdby user
+                        var createdByUser = await _context.Users.FindAsync(transactionDto.createdby);
+                        if (createdByUser == null)
+                        {
+                            return NotFound(new { message = "Created by user not found" });
+                        }
+
+                        // Create transaction record
+                        var newTransaction = new Transaction
+                        {
+                            transaction_type = "Issue To Site",
+                            transaction_date = DateTime.Now,
+                            from_site_id = transactionDto.from_site_id,
+                            to_site_id = transactionDto.to_site_id,
+                            createdby = transactionDto.createdby,
+                            createdat = DateTime.Now,
+                            updatedby = transactionDto.createdby,
+                            updatedat = DateTime.Now,
+                            status = "completed",
+                            remark = transactionDto.remark,
+                            request_id = transactionDto.request_id,
+                            site_id = transactionDto.to_site_id // Assuming site_id refers to the originating site
+                        };
+
+                        _context.Transactions.Add(newTransaction);
+                        await _context.SaveChangesAsync();
+
+                        foreach (var itemDto in transactionDto.items)
+                        {
+                            // Validate material and unit
+                            var material = await _context.Materials.FindAsync(itemDto.material_id);
+                            var unit = await _context.Units.FindAsync(itemDto.unit_type_id);
+                            if (material == null || unit == null)
+                            {
+                                throw new Exception("Material or Unit not found");
+                            }
+
+                            // Deduct from from_site stock
+                            var fromStock = await _context.Stocks
+                                .FromSqlInterpolated($@"
+                            SELECT * FROM Stocks WITH (UPDLOCK)
+                            WHERE site_id = {transactionDto.from_site_id}
+                            AND material_id = {itemDto.material_id}
+                            AND unit_type_id = {itemDto.unit_type_id}
+                            AND StockOwnerType = 'site'")
+                                .FirstOrDefaultAsync();
+
+                            if (fromStock == null || fromStock.quantity < itemDto.quantity)
+                            {
+                                throw new Exception($"Insufficient stock in from site for material {material.id}");
+                            }
+                            fromStock.quantity -= itemDto.quantity;
+                            fromStock.UpdatedAt = DateTime.Now;
+                            fromStock.last_transaction_id = newTransaction.id;
+
+                            // Add to to_site stock
+                            var toStock = await _context.Stocks
+                                .FromSqlInterpolated($@"
+                            SELECT * FROM Stocks WITH (UPDLOCK)
+                            WHERE site_id = {transactionDto.to_site_id}
+                            AND material_id = {itemDto.material_id}
+                            AND unit_type_id = {itemDto.unit_type_id}
+                            AND StockOwnerType = 'site'")
+                                .FirstOrDefaultAsync();
+
+                            if (toStock == null)
+                            {
+                                toStock = new Stock
+                                {
+                                    site_id = transactionDto.to_site_id,
+                                    material_id = itemDto.material_id,
+                                    unit_type_id = itemDto.unit_type_id,
+                                    StockOwnerType = "site",
+                                    quantity = itemDto.quantity,
+                                    UpdatedAt = DateTime.Now,
+                                    last_transaction_id = newTransaction.id
+                                };
+                                _context.Stocks.Add(toStock);
+                            }
+                            else
+                            {
+                                toStock.quantity += itemDto.quantity;
+                                toStock.UpdatedAt = DateTime.Now;
+                                toStock.last_transaction_id = newTransaction.id;
+                            }
+
+                            // Create transaction item
+                            var transactionItem = new Transaction_Items
+                            {
+                                transaction_id = newTransaction.id,
+                                material_id = itemDto.material_id,
+                                unit_type_id = itemDto.unit_type_id,
+                                quantity = itemDto.quantity
+                                // unit_price, gst, etc., can be null for inter-site
+                            };
+                            _context.Transaction_Items.Add(transactionItem);
+                    }
+
+                    await _context.SaveChangesAsync();
+                    if (transactionDto.request_id != null)
+                    {
+                        var request = await _context.Material_Requests.FindAsync(transactionDto.request_id);
+
+                        if (request == null)
+                        {
+                            throw new Exception("Request not found");
+                        }
+                        var opUser = await _context.Users.FindAsync(request.requested_by);
+                        if (opUser == null)
+                        {
+                            throw new Exception("User not found");
+                        }
+                        // Check user's role and update status accordingly
+                        if (opUser.role == userrole.sitemanager)
+                        {
+                            request.status = "Fulfilled";
+                        }
+                        if (opUser.role == userrole.siteengineer)
+                        {
+                            request.status = "Fulfilled To Site";
+                        }
+                        
+                        
+                        if (opUser.role == userrole.admin)
+                        {
+                            throw new Exception("User not ok");
+                        }
+
+                        request.approved_by = transactionDto.createdby;
+                        request.approval_date = DateTime.Now;
+
+                        await _context.SaveChangesAsync();
+                    }
+
+                    await dbTransaction.CommitAsync();
+
+                        return Ok(new { message = "Transaction created successfully", transactionId = newTransaction.id });
+                    }
+                    catch (Exception ex)
+                    {
+                        await dbTransaction.RollbackAsync();
+                        return StatusCode(500, new { message = $"Error creating transaction: {ex.Message}" });
+                    }
+                }
+        }
     }
 }

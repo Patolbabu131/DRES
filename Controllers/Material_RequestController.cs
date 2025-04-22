@@ -67,9 +67,11 @@ namespace DRES.Controllers
             public DateTime request_date { get; set; }
             public string requested_by { get; set; }
             public string? remark { get; set; }
-            public string? approved_by { get; set; }
-            public DateTime? approval_date { get; set; }
+
+            public bool forwarded_to_ho { get; set; }
             public string status { get; set; }
+
+           
             public List<MaterialRequestItemResponseDTO> items { get; set; } = new List<MaterialRequestItemResponseDTO>();
         }
 
@@ -82,11 +84,13 @@ namespace DRES.Controllers
             public string unit_name { get; set; }
             public string unit_symbol { get; set; }
             public int quantity { get; set; }
-            
+
+
         }
 
         // GET: api/Material_Request/GetAllRequests
         [HttpGet("GetRequestsList/{userId}")]
+
         public async Task<IActionResult> GetRequestsList(int userId)
         {
             try
@@ -107,7 +111,7 @@ namespace DRES.Controllers
 
                 if (user.role == userrole.sitemanager)
                 {
-                    query = query.Where(r => r.site_id == user.siteid && r.forwarded_to_ho == false);
+                    query = query.Where(r => r.site_id == user.siteid);
                 }
                 else if (user.role == userrole.siteengineer)
                 {
@@ -137,13 +141,10 @@ namespace DRES.Controllers
                     request_date = r.request_date,
                     // Lookup the requesting user and format as "username (role)".
                     requested_by = users.FirstOrDefault(u => u.id == r.requested_by) is User reqUser
-                        ? $"{reqUser.username} ({reqUser.role})"
+                        ? $"{reqUser.username}"
                         : "Unknown",
+                    forwarded_to_ho = r.forwarded_to_ho,
                     remark = r.remark,
-                    approved_by = r.approved_by != null && users.FirstOrDefault(u => u.id == r.approved_by) is User apprUser
-                        ? $"{apprUser.username} ({apprUser.role})"
-                        : null,
-                    approval_date = r.approval_date,
                     status = r.status,
                     items = r.Material_Request_Item.Select(i => new MaterialRequestItemResponseDTO
                     {
@@ -152,6 +153,7 @@ namespace DRES.Controllers
                         material_name = i.Material?.material_name ?? "Unknown",
                         unit_name = i.Unit?.unitname ?? "Unknown",
                         unit_symbol = i.Unit?.unitsymbol ?? "",
+
                         quantity = i.quantity,
                     }).ToList()
                 }).ToList();
@@ -166,7 +168,208 @@ namespace DRES.Controllers
 
 
 
+        [HttpGet("DropdownRequestList/{userId}")]
+        public async Task<IActionResult> DropdownRequestList(int userId)
+        {
+            try
+            {
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null)
+                {
+                    return NotFound(new { message = "User not found" });
+                }
 
+                IQueryable<Material_Request> query = _context.Material_Requests
+                    .Include(r => r.Site);
+
+                // Apply role-based filters
+                if (user.role == userrole.sitemanager)
+                {
+                    query = query.Where(r =>
+                        r.site_id == user.siteid &&
+                        (r.status == "Pending" || r.status == "Fulfilled To Site") 
+                        //!r.forwarded_to_ho  // Added forwarded_to_ho condition
+                    );
+                }
+                else if (user.role == userrole.admin)
+                {
+                    query = query.Where(r =>
+                        r.forwarded_to_ho == true &&
+                        (r.status == "Pending" || r.status == "Forwarded To HO")
+                    );
+                }
+                else
+                {
+                    return BadRequest(new { message = "Unauthorized access" });
+                }
+
+                var requests = await query
+                    .OrderByDescending(r => r.id)
+                    .ToListAsync();
+
+                // Simplified DTO for dropdown
+                var response = requests.Select(r => new
+                {
+                    id = r.id,
+                    user_id= r.requested_by,
+                    site_id=r.site_id
+                }).ToList();
+
+                return Ok(new { message = "Success", data = response });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error: {ex.Message}" });
+            }
+        }
+
+
+
+        [HttpPut("ForwardToHO/{requestId}/{userId}")]
+        public async Task<IActionResult> ForwardToHO(int requestId, int userId)
+        {
+            try
+            {
+                var request = await _context.Material_Requests
+                    .FirstOrDefaultAsync(r => r.id == requestId);
+
+                if (request == null)
+                {
+                    return NotFound(new { message = "Request not found" });
+                }
+
+                var user = await _context.Users.FindAsync(userId);
+                if (user?.role != userrole.sitemanager)
+                {
+                    return BadRequest(new { message = "Unauthorized operation" });
+                }
+
+                if (request.forwarded_to_ho)
+                {
+                    return BadRequest(new { message = "Request already forwarded to HO" });
+                }
+
+                request.forwarded_to_ho = true;
+                request.status = "Forwarded To HO"; // Optional: Update status
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Request forwarded successfully" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error: {ex.Message}" });
+            }
+        }
+
+
+
+        [HttpPut("RejectRequest/{requestId}/{userId}")]
+        public async Task<IActionResult> RejectRequest(int requestId, int userId)
+        {
+            try
+            {
+                // Validate user exists
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null)
+                {
+                    return NotFound(new { message = "User not found." });
+                }
+
+                // Get request with related data
+                var request = await _context.Material_Requests
+                    .Include(r => r.Site)
+                    .FirstOrDefaultAsync(r => r.id == requestId);
+
+                if (request == null)
+                {
+                    return NotFound(new { message = "Request not found." });
+                }
+
+                // Authorization checks
+                bool isAuthorized = false;
+                if (user.role == userrole.admin)
+                {
+                    // Admin can only reject requests forwarded to HO
+                    isAuthorized = request.forwarded_to_ho == true;
+                }
+                else if (user.role == userrole.sitemanager)
+                {
+                    // Site manager can only reject their site's requests not forwarded to HO
+                    isAuthorized = request.forwarded_to_ho == false &&
+                                 request.site_id == user.siteid;
+                }
+
+                if (!isAuthorized && request.status== "Forwarded To HO")
+                {
+                    return BadRequest(new { message = "You are not authorized to reject this request." });
+                }
+
+                // Update request status
+                request.status = "Rejected";
+                request.approved_by = userId;
+                request.approval_date = DateTime.Now;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Request rejected successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error: {ex.Message}" });
+            }
+        }
+        // GET: api/Material_Request/GetRequestDetails/{requestId}
+        [HttpGet("GetRequestDetails/{request_id}")]
+        public async Task<IActionResult> GetRequestDetails(int request_id)
+        {
+            try
+            {
+                // Fetch the request with related Site, Items, Materials, and Units
+                var request = await _context.Material_Requests
+                    .Include(r => r.Site)
+                    .Include(r => r.Material_Request_Item)
+                        .ThenInclude(i => i.Material)
+                    .Include(r => r.Material_Request_Item)
+                        .ThenInclude(i => i.Unit)
+                    .FirstOrDefaultAsync(r => r.id == request_id);
+
+                if (request == null)
+                {
+                    return NotFound(new { message = "Request not found." });
+                }
+
+                // Fetch the requesting user for display
+                var reqUser = await _context.Users.FindAsync(request.requested_by);
+                string requestedByName = reqUser != null ? reqUser.username : "Unknown";
+
+                // Map to DTO
+                var responseDto = new MaterialRequestResponseDTO
+                {
+                    id = request.id,
+                    site_name = request.Site?.sitename ?? "N/A",
+                    request_date = request.request_date,
+                    requested_by = requestedByName,
+                    remark = request.remark,
+                    status = request.status,
+                    forwarded_to_ho=request.forwarded_to_ho,
+                    items = request.Material_Request_Item.Select(i => new MaterialRequestItemResponseDTO
+                    {
+                        id = i.id,
+                        request_id = i.request_id,
+                        material_name = i.Material?.material_name ?? "Unknown",
+                        unit_name = i.Unit?.unitname ?? "Unknown",
+                        unit_symbol = i.Unit?.unitsymbol ?? string.Empty,
+                        quantity = i.quantity
+                    }).ToList()
+                };
+
+                return Ok(new { message = "Success", data = responseDto });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error: {ex.Message}" });
+            }
+        }
 
 
         // POST: api/Material_Request/CreateRequest
